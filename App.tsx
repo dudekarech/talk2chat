@@ -18,6 +18,7 @@ import { GlobalSharedInbox } from './pages/GlobalAdmin/GlobalSharedInbox';
 import { WidgetConfiguration } from './pages/GlobalAdmin/WidgetConfiguration';
 import { AgentDashboard } from './pages/AgentDashboard';
 import { RoleBasedRedirect } from './components/RoleBasedRedirect';
+import { TenantDashboard } from './pages/TenantDashboard';
 
 const App: React.FC = () => {
   return (
@@ -33,6 +34,14 @@ const App: React.FC = () => {
 
         {/* Agent Dashboard */}
         <Route path="/agent/dashboard" element={<AgentDashboard />} />
+
+        {/* Tenant Admin Dashboard */}
+        <Route path="/tenant/dashboard" element={<TenantDashboard />} />
+        <Route path="/tenant/widget" element={<TenantDashboard />} />
+        <Route path="/tenant/team" element={<TenantDashboard />} />
+        <Route path="/tenant/chats" element={<TenantDashboard />} />
+        <Route path="/tenant/settings" element={<TenantDashboard />} />
+        <Route path="/tenant/analytics" element={<TenantDashboard />} />
 
         {/* Global Admin Routes */}
         <Route path="/global/admin" element={<GlobalAdminLogin />} />

@@ -41,7 +41,7 @@ export const RoleBasedRedirect: React.FC = () => {
                         user_id: user.id,
                         email: user.email,
                         name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
-                        role: 'agent', // Default role
+                        role: 'tenant_admin', // Default role for new signups
                         status: 'active'
                     });
 
@@ -51,8 +51,8 @@ export const RoleBasedRedirect: React.FC = () => {
                     return;
                 }
 
-                // After creating profile, redirect to agent dashboard
-                navigate('/agent/dashboard');
+                // After creating profile, redirect to tenant dashboard
+                navigate('/tenant/dashboard');
                 return;
             }
 
@@ -76,19 +76,23 @@ export const RoleBasedRedirect: React.FC = () => {
                         console.log('Redirecting to global admin dashboard');
                         navigate('/global/dashboard');
                         break;
+                    case 'tenant_admin':
+                        console.log('Redirecting to tenant dashboard');
+                        navigate('/tenant/dashboard');
+                        break;
                     case 'manager':
                     case 'agent':
                         console.log('Redirecting to agent dashboard');
                         navigate('/agent/dashboard');
                         break;
                     default:
-                        console.log('Unknown role, redirecting to agent dashboard');
-                        navigate('/agent/dashboard');
+                        console.log('Unknown role, redirecting to tenant dashboard');
+                        navigate('/tenant/dashboard');
                 }
             } else {
-                // No role found, default to agent dashboard
-                console.log('No role found, redirecting to agent dashboard');
-                navigate('/agent/dashboard');
+                // No role found, default to tenant dashboard
+                console.log('No role found, redirecting to tenant dashboard');
+                navigate('/tenant/dashboard');
             }
         } catch (error: any) {
             console.error('Error checking role:', error);
