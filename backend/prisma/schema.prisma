@@ -1,0 +1,142 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Multi-tenant company structure
+model Company {
+  id          String   @id @default(cuid())
+  uuid        String   @unique @default(uuid()) // Public UUID for widget
+  name        String
+  domain     String?  // Allowed domains for widget
+  logo        String?  // Logo URL
+  branding   Json?    // Branding colors, etc.
+  status      CompanyStatus @default(ACTIVE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  users      User[]
+  agents     Agent[]
+  calls      Call[]
+  widgets    Widget[]
+
+  @@map("companies")
+}
+
+// User roles and authentication
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  role      UserRole
+  status    UserStatus @default(ACTIVE)
+  companyId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  company   Company? @relation(fields: [companyId], references: [id])
+  agent     Agent?   // If user is an agent
+
+  @@map("users")
+}
+
+// Agent management per company
+model Agent {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  companyId String
+  status    AgentStatus @default(OFFLINE)
+  skills    String[] // Agent skills for routing
+  maxCalls  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id])
+  company   Company  @relation(fields: [companyId], references: [id])
+  calls     Call[]   // Calls this agent has handled
+
+  @@map("agents")
+}
+
+// Widget configuration per company
+model Widget {
+  id          String   @id @default(cuid())
+  companyId   String   @unique
+  config      Json     // Widget configuration (colors, position, etc.)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  company     Company  @relation(fields: [companyId], references: [id])
+
+  @@map("widgets")
+}
+
+// Call tracking and routing
+model Call {
+  id          String   @id @default(cuid())
+  uuid        String   @unique @default(uuid()) // Public call UUID
+  companyId   String
+  agentId     String?
+  visitorId   String   // Anonymous visitor identifier
+  status      CallStatus
+  duration    Int?     // Call duration in seconds
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+  metadata    Json?    // Additional call metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  company     Company  @relation(fields: [companyId], references: [id])
+  agent       Agent?   @relation(fields: [agentId], references: [id])
+
+  @@map("calls")
+}
+
+// Enums
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum UserRole {
+  SUPERADMIN
+  COMPANY_ADMIN
+  AGENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum AgentStatus {
+  ONLINE
+  BUSY
+  OFFLINE
+}
+
+enum CallStatus {
+  QUEUED
+  RINGING
+  CONNECTED
+  COMPLETED
+  MISSED
+  FAILED
+}

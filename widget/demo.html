@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CallNest Widget Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .demo-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            overflow-x: auto;
+        }
+        .widget-info {
+            background: #e6fffa;
+            border: 1px solid #81e6d9;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧩 CallNest Widget Demo</h1>
+    
+    <div class="demo-section">
+        <h2>What is CallNest?</h2>
+        <p>CallNest is a multi-tenant website call conversion platform that enables businesses to instantly turn their website visitors into live calls through an embeddable widget.</p>
+        
+        <div class="widget-info">
+            <strong>🎯 Mission:</strong> "Weaponizing websites to convert visitors into calls"
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <h2>Widget Integration</h2>
+        <p>Each company gets a unique embed code that automatically creates a floating call button on their website:</p>
+        
+        <div class="code-block">
+&lt;script src="https://cdn.callnest.io/widget.js" data-uuid="DEMO-COMPANY-UUID"&gt;&lt;/script&gt;
+        </div>
+        
+        <p>The widget automatically:</p>
+        <ul>
+            <li>Shows a floating call button (bottom-right by default)</li>
+            <li>Routes calls to company agents</li>
+            <li>Handles agent availability</li>
+            <li>Provides real-time call status</li>
+        </ul>
+    </div>
+
+    <div class="demo-section">
+        <h2>Multi-Tenant Architecture</h2>
+        <p>CallNest supports multiple companies on a single platform:</p>
+        <ul>
+            <li><strong>Superadmin:</strong> Manages all companies and platform settings</li>
+            <li><strong>Company Admin:</strong> Manages their company's agents and widget settings</li>
+            <li><strong>Agent:</strong> Receives calls via web panel</li>
+        </ul>
+    </div>
+
+    <div class="demo-section">
+        <h2>Current Demo</h2>
+        <p>This page includes a live demo widget (bottom-right corner). Click it to see the widget in action!</p>
+        <p><em>Note: This is a demo widget - actual call functionality will be implemented in the full version.</em></p>
+    </div>
+
+    <div class="demo-section">
+        <h2>Technical Stack</h2>
+        <ul>
+            <li><strong>Widget:</strong> Vanilla JS + WebRTC (future)</li>
+            <li><strong>Frontend:</strong> React + Tailwind CSS</li>
+            <li><strong>Backend:</strong> Node.js + NestJS</li>
+            <li><strong>Database:</strong> PostgreSQL + Redis</li>
+            <li><strong>Real-time:</strong> WebSockets</li>
+        </ul>
+    </div>
+
+    <div class="demo-section">
+        <h2>Next Steps</h2>
+        <p>The full CallNest platform will include:</p>
+        <ul>
+            <li>Complete authentication system</li>
+            <li>Company and agent management dashboards</li>
+            <li>Real-time call handling</li>
+            <li>Analytics and reporting</li>
+            <li>IVR and advanced routing</li>
+        </ul>
+    </div>
+
+    <!-- CallNest Widget Demo -->
+    <script src="dist/widget.js" data-uuid="DEMO-COMPANY-UUID"></script>
+</body>
+</html>

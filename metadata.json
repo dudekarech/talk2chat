@@ -1,0 +1,5 @@
+{
+  "name": "TalkChat Studio",
+  "description": "A multi-tenant AI-powered chat widget and shared inbox platform for customer support teams.",
+  "requestFramePermissions": []
+}

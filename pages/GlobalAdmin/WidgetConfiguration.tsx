@@ -1,0 +1,866 @@
+import React, { useState, useEffect } from 'react';
+import {
+    Settings,
+    Code,
+    Eye,
+    Palette,
+    MessageSquare,
+    Clock,
+    Shield,
+    Zap,
+    Bot,
+    MousePointer,
+    Bell,
+    FileText,
+    Globe,
+    Sparkles,
+    Brain,
+    BarChart3,
+    Users,
+    Loader2,
+    Check,
+    AlertCircle
+} from 'lucide-react';
+import { useWidgetConfig } from '../../hooks/useWidgetConfig';
+
+export const WidgetConfiguration: React.FC = () => {
+    const [activeSection, setActiveSection] = useState('appearance');
+
+    const {
+        config: widgetConfig,
+        setConfig: setWidgetConfig,
+        isLoading,
+        isSaving,
+        saveSuccess,
+        saveError,
+        saveConfig,
+        resetToDefaults,
+        reloadConfig
+    } = useWidgetConfig();
+
+    // Auto-hide success message after 3 seconds
+    useEffect(() => {
+        if (saveSuccess) {
+            const timer = setTimeout(() => {
+                // Success message will auto-hide
+            }, 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [saveSuccess]);
+
+    if (isLoading) {
+        return (
+            <div className="flex h-[calc(100vh-4rem)] items-center justify-center bg-slate-900">
+                <div className="text-center">
+                    <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
+                    <p className="text-white text-lg">Loading widget configuration...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!widgetConfig) {
+        return (
+            <div className="flex h-[calc(100vh-4rem)] items-center justify-center bg-slate-900">
+                <div className="text-center text-red-400">
+                    <AlertCircle className="w-12 h-12 mx-auto mb-4" />
+                    <p className="text-lg">Failed to load configuration</p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="mt-4 px-4 py-2 bg-slate-800 rounded-lg text-white hover:bg-slate-700"
+                    >
+                        Retry
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    const handleSave = async () => {
+        const success = await saveConfig(widgetConfig);
+        if (success) {
+            // Reload config to ensure UI is in sync with database
+            await reloadConfig();
+        }
+    };
+
+    const handleReset = async () => {
+        if (confirm('Are you sure you want to reset all settings to defaults? This cannot be undone.')) {
+            await resetToDefaults();
+        }
+    };
+
+    const handlePreview = () => {
+        window.open('/#/?preview=true', '_blank');
+    };
+
+    const sections = [
+        { id: 'appearance', label: 'Appearance', icon: Palette },
+        { id: 'content', label: 'Content & Messages', icon: MessageSquare },
+        { id: 'behavior', label: 'Behavior', icon: Clock },
+        { id: 'prechat', label: 'Pre-Chat Form', icon: FileText },
+        { id: 'ai', label: 'AI Integration', icon: Bot },
+        { id: 'tracking', label: 'Visitor Tracking', icon: MousePointer },
+        { id: 'notifications', label: 'Notifications', icon: Bell },
+        { id: 'integrations', label: 'Integrations', icon: Globe },
+        { id: 'security', label: 'Security', icon: Shield },
+        { id: 'advanced', label: 'Advanced', icon: Settings },
+    ];
+
+    // Helper component for toggle switches
+    const ToggleSwitch = ({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) => (
+        <label className="relative inline-flex items-center cursor-pointer">
+            <input
+                type="checkbox"
+                checked={checked === true}
+                onChange={(e) => onChange(e.target.checked)}
+                className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+        </label>
+    );
+
+    return (
+        <div className="flex h-[calc(100vh-4rem)] bg-slate-900">
+            {/* Success Toast */}
+            {saveSuccess && (
+                <div className="fixed top-4 right-4 z-50 bg-green-600 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in">
+                    <Check className="w-6 h-6" />
+                    <div>
+                        <p className="font-semibold">Configuration Saved!</p>
+                        <p className="text-sm text-green-100">Your changes have been applied</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Error Toast */}
+            {saveError && (
+                <div className="fixed top-4 right-4 z-50 bg-red-600 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3">
+                    <AlertCircle className="w-6 h-6" />
+                    <div>
+                        <p className="font-semibold">Error Saving</p>
+                        <p className="text-sm text-red-100">{saveError}</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Left Sidebar */}
+            <div className="w-64 border-r border-slate-700 bg-slate-800/50 overflow-y-auto">
+                <div className="p-4">
+                    <h2 className="font-bold text-white mb-4">Widget Settings</h2>
+                    <div className="space-y-1">
+                        {sections.map((section) => (
+                            <button
+                                key={section.id}
+                                onClick={() => setActiveSection(section.id)}
+                                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${activeSection === section.id
+                                    ? 'bg-blue-600 text-white'
+                                    : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                                    }`}
+                            >
+                                <section.icon className="w-4 h-4" />
+                                <span className="text-sm font-medium">{section.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+                <div className="max-w-4xl mx-auto space-y-6 pb-32">
+                    {/* APPEARANCE SECTION */}
+                    {activeSection === 'appearance' && (
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Appearance</h3>
+                                <p className="text-slate-400">Customize the visual design of your chat widget</p>
+                            </div>
+
+                            {/* Colors */}
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+                                <h4 className="font-semibold text-white">Colors</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">Primary Color</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="color"
+                                                value={widgetConfig.primaryColor || '#8b5cf6'}
+                                                onChange={(e) => setWidgetConfig({ ...widgetConfig, primaryColor: e.target.value })}
+                                                className="w-12 h-10 rounded cursor-pointer"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={widgetConfig.primaryColor || '#8b5cf6'}
+                                                onChange={(e) => setWidgetConfig({ ...widgetConfig, primaryColor: e.target.value })}
+                                                className="flex-1 bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">Secondary Color</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="color"
+                                                value={widgetConfig.secondaryColor || '#ec4899'}
+                                                onChange={(e) => setWidgetConfig({ ...widgetConfig, secondaryColor: e.target.value })}
+                                                className="w-12 h-10 rounded cursor-pointer"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={widgetConfig.secondaryColor || '#ec4899'}
+                                                onChange={(e) => setWidgetConfig({ ...widgetConfig, secondaryColor: e.target.value })}
+                                                className="flex-1 bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">Background Color</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="color"
+                                                value={widgetConfig.backgroundColor || '#0f172a'}
+                                                onChange={(e) => setWidgetConfig({ ...widgetConfig, backgroundColor: e.target.value })}
+                                                className="w-12 h-10 rounded cursor-pointer"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={widgetConfig.backgroundColor || '#0f172a'}
+                                                onChange={(e) => setWidgetConfig({ ...widgetConfig, backgroundColor: e.target.value })}
+                                                className="flex-1 bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">Theme</label>
+                                        <select
+                                            value={widgetConfig.theme || 'dark'}
+                                            onChange={(e) => setWidgetConfig({ ...widgetConfig, theme: e.target.value })}
+                                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                        >
+                                            <option value="dark">Dark</option>
+                                            <option value="light">Light</option>
+                                            <option value="auto">Auto (System)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Branding */}
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+                                <h4 className="font-semibold text-white">Branding</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">Team Name</label>
+                                        <input
+                                            type="text"
+                                            value={widgetConfig.teamName || 'Support Team'}
+                                            onChange={(e) => setWidgetConfig({ ...widgetConfig, teamName: e.target.value })}
+                                            placeholder="e.g., Support Team"
+                                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">Company Logo URL</label>
+                                        <input
+                                            type="text"
+                                            value={widgetConfig.companyLogo || ''}
+                                            onChange={(e) => setWidgetConfig({ ...widgetConfig, companyLogo: e.target.value })}
+                                            placeholder="https://example.com/logo.png"
+                                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between pt-2">
+                                    <div>
+                                        <p className="text-white font-medium">Show "Powered by TalkChat"</p>
+                                        <p className="text-xs text-slate-500">Display branding in widget footer</p>
+                                    </div>
+                                    <ToggleSwitch
+                                        checked={widgetConfig.showPoweredBy !== false}
+                                        onChange={(checked) => setWidgetConfig({ ...widgetConfig, showPoweredBy: checked })}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Layout */}
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+                                <h4 className="font-semibold text-white">Layout & Style</h4>
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">Position</label>
+                                        <select
+                                            value={widgetConfig.position || 'bottom-right'}
+                                            onChange={(e) => setWidgetConfig({ ...widgetConfig, position: e.target.value })}
+                                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                        >
+                                            <option value="bottom-right">Bottom Right</option>
+                                            <option value="bottom-left">Bottom Left</option>
+                                            <option value="top-right">Top Right</option>
+                                            <option value="top-left">Top Left</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">Widget Shape</label>
+                                        <select
+                                            value={widgetConfig.widgetShape || 'rounded'}
+                                            onChange={(e) => setWidgetConfig({ ...widgetConfig, widgetShape: e.target.value })}
+                                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                        >
+                                            <option value="rounded">Rounded</option>
+                                            <option value="square">Square</option>
+                                            <option value="circle">Circle</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">Font Size</label>
+                                        <select
+                                            value={widgetConfig.fontSize || 'medium'}
+                                            onChange={(e) => setWidgetConfig({ ...widgetConfig, fontSize: e.target.value })}
+                                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                        >
+                                            <option value="small">Small</option>
+                                            <option value="medium">Medium</option>
+                                            <option value="large">Large</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 pt-2">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-white font-medium">Show Agent Avatars</p>
+                                            <p className="text-xs text-slate-500">Display profile pictures</p>
+                                        </div>
+                                        <ToggleSwitch
+                                            checked={widgetConfig.showAgentAvatars !== false}
+                                            onChange={(checked) => setWidgetConfig({ ...widgetConfig, showAgentAvatars: checked })}
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-white font-medium">Show Timestamps</p>
+                                            <p className="text-xs text-slate-500">Display message times</p>
+                                        </div>
+                                        <ToggleSwitch
+                                            checked={widgetConfig.showTimestamps !== false}
+                                            onChange={(checked) => setWidgetConfig({ ...widgetConfig, showTimestamps: checked })}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* CONTENT SECTION */}
+                    {activeSection === 'content' && (
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Content & Messages</h3>
+                                <p className="text-slate-400">Customize the text displayed in your widget</p>
+                            </div>
+
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">Welcome Message</label>
+                                    <textarea
+                                        value={widgetConfig.welcomeMessage || 'Hello! How can we help you today?'}
+                                        onChange={(e) => setWidgetConfig({ ...widgetConfig, welcomeMessage: e.target.value })}
+                                        placeholder="First message visitors see"
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm h-24 resize-none"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">Offline Message</label>
+                                    <textarea
+                                        value={widgetConfig.offlineMessage || 'We\'re currently offline. Leave a message!'}
+                                        onChange={(e) => setWidgetConfig({ ...widgetConfig, offlineMessage: e.target.value })}
+                                        placeholder="Shown when agents are offline"
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm h-24 resize-none"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">Thank You Message</label>
+                                    <textarea
+                                        value={widgetConfig.thankYouMessage || 'Thank you for chatting with us!'}
+                                        onChange={(e) => setWidgetConfig({ ...widgetConfig, thankYouMessage: e.target.value })}
+                                        placeholder="Shown when chat ends"
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm h-24 resize-none"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">Input Placeholder</label>
+                                    <input
+                                        type="text"
+                                        value={widgetConfig.inputPlaceholder || 'Type your message...'}
+                                        onChange={(e) => setWidgetConfig({ ...widgetConfig, inputPlaceholder: e.target.value })}
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">Button Text</label>
+                                    <input
+                                        type="text"
+                                        value={widgetConfig.buttonText || 'Chat with us'}
+                                        onChange={(e) => setWidgetConfig({ ...widgetConfig, buttonText: e.target.value })}
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* BEHAVIOR SECTION */}
+                    {activeSection === 'behavior' && (
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Behavior</h3>
+                                <p className="text-slate-400">Control how and when your widget appears</p>
+                            </div>
+
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+                                <h4 className="font-semibold text-white">Auto-Open Settings</h4>
+
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-white font-medium">Auto Open Widget</p>
+                                        <p className="text-xs text-slate-500">Automatically open chat after delay</p>
+                                    </div>
+                                    <ToggleSwitch
+                                        checked={widgetConfig.autoOpen === true}
+                                        onChange={(checked) => setWidgetConfig({ ...widgetConfig, autoOpen: checked })}
+                                    />
+                                </div>
+
+                                {widgetConfig.autoOpen && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">
+                                            Auto Open Delay (seconds)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="60"
+                                            value={widgetConfig.autoOpenDelay || 5}
+                                            onChange={(e) => setWidgetConfig({ ...widgetConfig, autoOpenDelay: parseInt(e.target.value) })}
+                                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-white font-medium">Sound Notifications</p>
+                                        <p className="text-xs text-slate-500">Play sound on new messages</p>
+                                    </div>
+                                    <ToggleSwitch
+                                        checked={widgetConfig.soundNotifications === true}
+                                        onChange={(checked) => setWidgetConfig({ ...widgetConfig, soundNotifications: checked })}
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-white font-medium">Hide on Mobile</p>
+                                        <p className="text-xs text-slate-500">Hide widget on mobile devices</p>
+                                    </div>
+                                    <ToggleSwitch
+                                        checked={widgetConfig.hideOnMobile === true}
+                                        onChange={(checked) => setWidgetConfig({ ...widgetConfig, hideOnMobile: checked })}
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-white font-medium">Typing Indicator</p>
+                                        <p className="text-xs text-slate-500">Show when agent is typing</p>
+                                    </div>
+                                    <ToggleSwitch
+                                        checked={widgetConfig.typingIndicator !== false}
+                                        onChange={(checked) => setWidgetConfig({ ...widgetConfig, typingIndicator: checked })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* PRECHAT SECTION */}
+                    {activeSection === 'prechat' && (
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Pre-Chat Form</h3>
+                                <p className="text-slate-400">Collect visitor information before chat starts</p>
+                            </div>
+
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-white font-medium">Require Name</p>
+                                        <p className="text-xs text-slate-500">Visitors must provide their name</p>
+                                    </div>
+                                    <ToggleSwitch
+                                        checked={widgetConfig.requireName !== false}
+                                        onChange={(checked) => setWidgetConfig({ ...widgetConfig, requireName: checked })}
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-white font-medium">Require Email</p>
+                                        <p className="text-xs text-slate-500">Visitors must provide their email</p>
+                                    </div>
+                                    <ToggleSwitch
+                                        checked={widgetConfig.requireEmail === true}
+                                        onChange={(checked) => setWidgetConfig({ ...widgetConfig, requireEmail: checked })}
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-white font-medium">Require Phone</p>
+                                        <p className="text-xs text-slate-500">Visitors must provide their phone number</p>
+                                    </div>
+                                    <ToggleSwitch
+                                        checked={widgetConfig.requirePhone === true}
+                                        onChange={(checked) => setWidgetConfig({ ...widgetConfig, requirePhone: checked })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* AI SECTION */}
+                    {activeSection === 'ai' && (
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">AI Integration</h3>
+                                <p className="text-slate-400">Enable AI-powered features for intelligent responses</p>
+                            </div>
+
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-white font-medium text-lg">Enable AI Assistant</p>
+                                        <p className="text-xs text-slate-500">Use AI to help respond to customer queries</p>
+                                    </div>
+                                    <ToggleSwitch
+                                        checked={widgetConfig.aiEnabled === true}
+                                        onChange={(checked) => setWidgetConfig({ ...widgetConfig, aiEnabled: checked })}
+                                    />
+                                </div>
+
+                                {widgetConfig.aiEnabled && (
+                                    <>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-300 mb-2">AI Provider</label>
+                                                <select
+                                                    value={widgetConfig.aiProvider || 'gemini'}
+                                                    onChange={(e) => setWidgetConfig({ ...widgetConfig, aiProvider: e.target.value })}
+                                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                                >
+                                                    <option value="gemini">Google Gemini</option>
+                                                    <option value="openai">OpenAI GPT</option>
+                                                    <option value="anthropic">Anthropic Claude</option>
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-300 mb-2">AI Model</label>
+                                                <select
+                                                    value={widgetConfig.aiModel || 'gemini-1.5-flash'}
+                                                    onChange={(e) => setWidgetConfig({ ...widgetConfig, aiModel: e.target.value })}
+                                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                                >
+                                                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast)</option>
+                                                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Smart)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="border-t border-slate-700 pt-6">
+                                            <h4 className="font-semibold text-white mb-4">AI Features</h4>
+                                            <div className="space-y-4">
+                                                {[
+                                                    { key: 'aiAutoRespond', label: 'Auto-Respond to Questions', desc: 'AI automatically answers FAQs' },
+                                                    { key: 'aiGreeting', label: 'AI-Powered Greetings', desc: 'Personalized welcome messages' },
+                                                    { key: 'aiSmartSuggestions', label: 'Smart Reply Suggestions', desc: 'AI suggests responses for agents' },
+                                                    { key: 'aiSentimentAnalysis', label: 'Sentiment Analysis', desc: 'Detect customer emotions in real-time' },
+                                                    { key: 'aiLanguageDetection', label: 'Auto Language Detection', desc: 'Detect and translate languages' },
+                                                ].map((feature) => (
+                                                    <div key={feature.key} className="flex items-center justify-between">
+                                                        <div>
+                                                            <p className="text-sm text-white font-medium">{feature.label}</p>
+                                                            <p className="text-xs text-slate-500">{feature.desc}</p>
+                                                        </div>
+                                                        <ToggleSwitch
+                                                            checked={widgetConfig[feature.key as keyof typeof widgetConfig] === true}
+                                                            onChange={(checked) => setWidgetConfig({ ...widgetConfig, [feature.key]: checked })}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* VISITOR TRACKING SECTION */}
+                    {activeSection === 'tracking' && (
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Visitor Tracking</h3>
+                                <p className="text-slate-400">Track visitor behavior and interactions for better insights</p>
+                            </div>
+
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
+                                {[
+                                    { key: 'trackVisitors', label: 'Enable Visitor Tracking', desc: 'Track individual visitor sessions' },
+                                    { key: 'trackPageViews', label: 'Track Page Views', desc: 'See which pages visitors browse' },
+                                    { key: 'trackMouseMovement', label: 'Track Mouse Movement', desc: 'Heatmap and cursor tracking' },
+                                    { key: 'trackClicks', label: 'Track Clicks', desc: 'Monitor where visitors click' },
+                                    { key: 'trackScrollDepth', label: 'Track Scroll Depth', desc: 'See how far visitors scroll' },
+                                    { key: 'trackTimeOnPage', label: 'Track Time on Page', desc: 'Measure engagement duration' },
+                                    { key: 'captureScreenshots', label: 'Capture Screenshots', desc: 'Visual snapshots of visitor sessions' },
+                                    { key: 'sessionRecording', label: 'Session Recording', desc: 'Record full visitor sessions (Privacy warning)' },
+                                ].map((feature) => (
+                                    <div key={feature.key} className="flex items-center justify-between py-2">
+                                        <div>
+                                            <p className="text-white font-medium">{feature.label}</p>
+                                            <p className="text-xs text-slate-500">{feature.desc}</p>
+                                        </div>
+                                        <ToggleSwitch
+                                            checked={widgetConfig[feature.key as keyof typeof widgetConfig] === true}
+                                            onChange={(checked) => setWidgetConfig({ ...widgetConfig, [feature.key]: checked })}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* NOTIFICATIONS SECTION */}
+                    {activeSection === 'notifications' && (
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Notifications</h3>
+                                <p className="text-slate-400">Configure how you want to be notified</p>
+                            </div>
+
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
+                                {[
+                                    { key: 'emailNotifications', label: 'Email Notifications', desc: 'Send notifications via email' },
+                                    { key: 'desktopNotifications', label: 'Desktop Notifications', desc: 'Browser push notifications' },
+                                    { key: 'mobileNotifications', label: 'Mobile Notifications', desc: 'Mobile push notifications' },
+                                    { key: 'notifyOnNewChat', label: 'Notify on New Chat', desc: 'Alert when new chat starts' },
+                                    { key: 'notifyOnMessage', label: 'Notify on Message', desc: 'Alert on each new message' },
+                                    { key: 'enableRating', label: 'Enable Chat Rating', desc: 'Ask visitors to rate their experience' },
+                                ].map((feature) => (
+                                    <div key={feature.key} className="flex items-center justify-between py-2">
+                                        <div>
+                                            <p className="text-white font-medium">{feature.label}</p>
+                                            <p className="text-xs text-slate-500">{feature.desc}</p>
+                                        </div>
+                                        <ToggleSwitch
+                                            checked={widgetConfig[feature.key as keyof typeof widgetConfig] === true}
+                                            onChange={(checked) => setWidgetConfig({ ...widgetConfig, [feature.key]: checked })}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* INTEGRATIONS SECTION */}
+                    {activeSection === 'integrations' && (
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Integrations</h3>
+                                <p className="text-slate-400">Connect with third-party services</p>
+                            </div>
+
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">Google Analytics ID</label>
+                                    <input
+                                        type="text"
+                                        value={widgetConfig.googleAnalytics || ''}
+                                        onChange={(e) => setWidgetConfig({ ...widgetConfig, googleAnalytics: e.target.value })}
+                                        placeholder="UA-XXXXXXXXX-X or G-XXXXXXXXXX"
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">Webhook URL</label>
+                                    <input
+                                        type="text"
+                                        value={widgetConfig.webhookUrl || ''}
+                                        onChange={(e) => setWidgetConfig({ ...widgetConfig, webhookUrl: e.target.value })}
+                                        placeholder="https://your-server.com/webhook"
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">Slack Webhook URL</label>
+                                    <input
+                                        type="text"
+                                        value={widgetConfig.slackWebhook || ''}
+                                        onChange={(e) => setWidgetConfig({ ...widgetConfig, slackWebhook: e.target.value })}
+                                        placeholder="https://hooks.slack.com/services/..."
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* SECURITY SECTION */}
+                    {activeSection === 'security' && (
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Security</h3>
+                                <p className="text-slate-400">Protect your widget from spam and abuse</p>
+                            </div>
+
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-white font-medium">Enable CAPTCHA</p>
+                                        <p className="text-xs text-slate-500">Prevent bot spam</p>
+                                    </div>
+                                    <ToggleSwitch
+                                        checked={widgetConfig.enableCaptcha === true}
+                                        onChange={(checked) => setWidgetConfig({ ...widgetConfig, enableCaptcha: checked })}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">Rate Limit (messages/min)</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="100"
+                                        value={widgetConfig.rateLimit || 10}
+                                        onChange={(e) => setWidgetConfig({ ...widgetConfig, rateLimit: parseInt(e.target.value) })}
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-white font-medium">Block VPN</p>
+                                        <p className="text-xs text-slate-500">Block VPN connections</p>
+                                    </div>
+                                    <ToggleSwitch
+                                        checked={widgetConfig.blockVpn === true}
+                                        onChange={(checked) => setWidgetConfig({ ...widgetConfig, blockVpn: checked })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ADVANCED SECTION */}
+                    {activeSection === 'advanced' && (
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Advanced Settings</h3>
+                                <p className="text-slate-400">Additional configuration options</p>
+                            </div>
+
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-white font-medium">File Upload</p>
+                                        <p className="text-xs text-slate-500">Allow visitors to upload files</p>
+                                    </div>
+                                    <ToggleSwitch
+                                        checked={widgetConfig.fileUpload !== false}
+                                        onChange={(checked) => setWidgetConfig({ ...widgetConfig, fileUpload: checked })}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">Message Character Limit</label>
+                                    <input
+                                        type="number"
+                                        min="100"
+                                        max="5000"
+                                        value={widgetConfig.messageCharacterLimit || 1000}
+                                        onChange={(e) => setWidgetConfig({ ...widgetConfig, messageCharacterLimit: parseInt(e.target.value) })}
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">Custom CSS</label>
+                                    <textarea
+                                        value={widgetConfig.customCss || ''}
+                                        onChange={(e) => setWidgetConfig({ ...widgetConfig, customCss: e.target.value })}
+                                        placeholder="/* Add custom CSS styles */&#10;.chat-widget { ... }"
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm font-mono h-32 resize-none"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Fixed Bottom Action Bar */}
+                <div className="fixed bottom-0 left-64 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 p-4 flex items-center justify-between z-10">
+                    <button
+                        onClick={handleReset}
+                        className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
+                        disabled={isSaving}
+                    >
+                        Reset to Defaults
+                    </button>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={handlePreview}
+                            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                            disabled={isSaving}
+                        >
+                            <Eye className="w-4 h-4" />
+                            Preview Widget
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            disabled={isSaving}
+                            className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white font-semibold rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isSaving ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Saving...
+                                </>
+                            ) : (
+                                <>
+                                    <Check className="w-4 h-4" />
+                                    Save Configuration
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
