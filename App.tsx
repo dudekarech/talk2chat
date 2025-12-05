@@ -32,7 +32,7 @@ const App: React.FC = () => {
         <Route path="/dashboard" element={<RoleBasedRedirect />} />
 
         {/* Agent Dashboard */}
-        <Route path="/agent/dashboard" element={<ProtectedRoute><AgentDashboard /></ProtectedRoute>} />
+        <Route path="/agent/dashboard" element={<AgentDashboard />} />
 
         {/* Global Admin Routes */}
         <Route path="/global/admin" element={<GlobalAdminLogin />} />
