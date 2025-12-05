@@ -36,6 +36,7 @@ export const TenantsManagement: React.FC = () => {
             const { data, error } = await supabase
                 .from('tenants')
                 .select('*')
+                .neq('status', 'deleted')
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -119,7 +120,10 @@ export const TenantsManagement: React.FC = () => {
         try {
             const { error } = await supabase
                 .from('tenants')
-                .update({ status: 'deleted' })
+                .update({
+                    status: 'deleted',
+                    deleted_at: new Date().toISOString()
+                })
                 .eq('id', tenantId);
 
             if (error) throw error;
@@ -253,10 +257,10 @@ export const TenantsManagement: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4">
                                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${tenant.status === 'active'
-                                                ? 'bg-green-600/20 text-green-400'
-                                                : tenant.status === 'suspended'
-                                                    ? 'bg-yellow-600/20 text-yellow-400'
-                                                    : 'bg-red-600/20 text-red-400'
+                                            ? 'bg-green-600/20 text-green-400'
+                                            : tenant.status === 'suspended'
+                                                ? 'bg-yellow-600/20 text-yellow-400'
+                                                : 'bg-red-600/20 text-red-400'
                                             }`}>
                                             {tenant.status}
                                         </span>
@@ -266,8 +270,8 @@ export const TenantsManagement: React.FC = () => {
                                             <button
                                                 onClick={() => handleSuspendTenant(tenant.id, tenant.status)}
                                                 className={`p-2 rounded transition-colors ${tenant.status === 'suspended'
-                                                        ? 'bg-green-600 hover:bg-green-700'
-                                                        : 'bg-yellow-600 hover:bg-yellow-700'
+                                                    ? 'bg-green-600 hover:bg-green-700'
+                                                    : 'bg-yellow-600 hover:bg-yellow-700'
                                                     } text-white`}
                                                 title={tenant.status === 'suspended' ? 'Activate' : 'Suspend'}
                                             >

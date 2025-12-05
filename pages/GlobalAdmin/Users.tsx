@@ -19,7 +19,7 @@ interface User {
     id: string;
     email: string;
     name: string;
-    role: 'super_admin' | 'admin' | 'agent' | 'manager';
+    role: 'super_admin' | 'admin' | 'agent' | 'manager' | 'tenant_admin';
     status: 'active' | 'suspended' | 'pending';
     created_at: string;
     last_sign_in_at?: string;
@@ -73,6 +73,7 @@ export const Users: React.FC = () => {
             const { data: profiles, error } = await supabase
                 .from('user_profiles')
                 .select('*')
+                .neq('status', 'deleted')
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -165,16 +166,36 @@ export const Users: React.FC = () => {
         }
 
         try {
+            // Soft delete
             const { error } = await supabase
                 .from('user_profiles')
-                .delete()
+                .update({
+                    status: 'deleted',
+                    deleted_at: new Date().toISOString()
+                })
                 .eq('user_id', userId);
 
             if (error) throw error;
 
             await loadUsers();
+            alert('User deleted successfully');
         } catch (error: any) {
             console.error('Error deleting user:', error);
+            alert(`Error: ${error.message}`);
+        }
+    };
+
+    const handleChangeRole = async (userId: string, newRole: string) => {
+        try {
+            const { error } = await supabase
+                .from('user_profiles')
+                .update({ role: newRole })
+                .eq('user_id', userId);
+
+            if (error) throw error;
+            await loadUsers();
+        } catch (error: any) {
+            console.error('Error updating role:', error);
             alert(`Error: ${error.message}`);
         }
     };
@@ -227,6 +248,7 @@ export const Users: React.FC = () => {
         switch (role) {
             case 'super_admin': return 'bg-red-500/10 text-red-400';
             case 'admin': return 'bg-purple-500/10 text-purple-400';
+            case 'tenant_admin': return 'bg-orange-500/10 text-orange-400';
             case 'manager': return 'bg-blue-500/10 text-blue-400';
             case 'agent': return 'bg-green-500/10 text-green-400';
             default: return 'bg-slate-500/10 text-slate-400';
@@ -321,6 +343,7 @@ export const Users: React.FC = () => {
                         <option value="all">All Roles</option>
                         <option value="super_admin">Super Admin</option>
                         <option value="admin">Admin</option>
+                        <option value="tenant_admin">Tenant Admin</option>
                         <option value="manager">Manager</option>
                         <option value="agent">Agent</option>
                     </select>
@@ -379,9 +402,17 @@ export const Users: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
-                                                    {user.role.replace('_', ' ').toUpperCase()}
-                                                </span>
+                                                <select
+                                                    value={user.role}
+                                                    onChange={(e) => handleChangeRole(user.id, e.target.value)}
+                                                    className={`px-3 py-1 rounded-full text-xs font-medium border-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${getRoleBadgeColor(user.role)}`}
+                                                >
+                                                    <option value="agent" className="bg-slate-800 text-slate-300">Agent</option>
+                                                    <option value="manager" className="bg-slate-800 text-slate-300">Manager</option>
+                                                    <option value="tenant_admin" className="bg-slate-800 text-slate-300">Tenant Admin</option>
+                                                    <option value="admin" className="bg-slate-800 text-slate-300">Admin</option>
+                                                    <option value="super_admin" className="bg-slate-800 text-slate-300">Super Admin</option>
+                                                </select>
                                             </td>
                                             <td className="px-6 py-4 text-slate-300">{user.department || '-'}</td>
                                             <td className="px-6 py-4">
@@ -403,10 +434,13 @@ export const Users: React.FC = () => {
                                                     </button>
                                                     <button
                                                         onClick={() => handleSuspendUser(user.id, user.status)}
-                                                        className="p-1.5 hover:bg-yellow-500/20 rounded text-yellow-400"
+                                                        className={`p-1.5 rounded ${user.status === 'suspended'
+                                                            ? 'hover:bg-green-500/20 text-green-400'
+                                                            : 'hover:bg-yellow-500/20 text-yellow-400'
+                                                            }`}
                                                         title={user.status === 'active' ? 'Suspend' : 'Activate'}
                                                     >
-                                                        <Shield className="w-4 h-4" />
+                                                        {user.status === 'suspended' ? <CheckCircle className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
                                                     </button>
                                                     <button
                                                         onClick={() => handleDeleteUser(user.id)}
@@ -514,6 +548,7 @@ export const Users: React.FC = () => {
                                     >
                                         <option value="agent">Agent</option>
                                         <option value="manager">Manager</option>
+                                        <option value="tenant_admin">Tenant Admin</option>
                                         <option value="admin">Admin</option>
                                         <option value="super_admin">Super Admin</option>
                                     </select>
@@ -610,6 +645,7 @@ export const Users: React.FC = () => {
                                 >
                                     <option value="agent">Agent</option>
                                     <option value="manager">Manager</option>
+                                    <option value="tenant_admin">Tenant Admin</option>
                                     <option value="admin">Admin</option>
                                     <option value="super_admin">Super Admin</option>
                                 </select>
