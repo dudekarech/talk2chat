@@ -19,6 +19,7 @@ import { WidgetConfiguration } from './pages/GlobalAdmin/WidgetConfiguration';
 import { AgentDashboard } from './pages/AgentDashboard';
 import { RoleBasedRedirect } from './components/RoleBasedRedirect';
 import { TenantDashboard } from './pages/TenantDashboard';
+import { TenantsManagement } from './pages/GlobalAdmin/TenantsManagement';
 
 const App: React.FC = () => {
   return (
@@ -49,7 +50,7 @@ const App: React.FC = () => {
           <Route path="dashboard" element={<DashboardHome />} />
           <Route path="inbox" element={<GlobalSharedInbox />} />
           <Route path="widget" element={<WidgetConfiguration />} />
-          <Route path="tenants" element={<Tenants />} />
+          <Route path="tenants" element={<TenantsManagement />} />
           <Route path="billing" element={<Billing />} />
           <Route path="users" element={<Users />} />
           <Route path="analytics" element={<Analytics />} />
