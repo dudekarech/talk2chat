@@ -28,7 +28,8 @@ export const WidgetEmbedPage: React.FC = () => {
     return (
         <div className="widget-embed-container">
             <GlobalChatWidget
-                forceGlobalConfig={!tenantId || tenantId === 'global'}
+                forceGlobalConfig={tenantId === 'global'}
+                publicTenantId={tenantId}
             />
         </div>
     );

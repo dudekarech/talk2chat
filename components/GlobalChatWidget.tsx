@@ -15,6 +15,8 @@ interface Message {
 interface GlobalChatWidgetProps {
     /** Force use of global config (for landing page). Ignores logged-in user's tenant. */
     forceGlobalConfig?: boolean;
+    /** Specific tenant ID for public embedding. Used when no user is logged in. */
+    publicTenantId?: string | null;
 }
 
 // Generate a unique visitor ID (persisted in localStorage)
@@ -27,7 +29,7 @@ const getOrCreateVisitorId = (): string => {
     return visitorId;
 };
 
-export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalConfig = false }) => {
+export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalConfig = false, publicTenantId }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -54,26 +56,33 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
     // Load configuration
     useEffect(() => {
         const loadConfig = async () => {
-            // CRITICAL: Landing page MUST use global config only
-            const { config: loadedConfig } = forceGlobalConfig
-                ? await widgetConfigService.getGlobalConfig()  // Landing page
-                : await widgetConfigService.getConfig();        // Dashboard preview
+            // CRITICAL: Determine which config to load
+            let result;
+            if (forceGlobalConfig) {
+                result = await widgetConfigService.getGlobalConfig();
+            } else if (publicTenantId !== undefined) {
+                // Use provided publicTenantId (for embeds)
+                result = await widgetConfigService.getConfig(publicTenantId);
+            } else {
+                // Normal dashboard behavior (uses logged in user)
+                result = await widgetConfigService.getConfig();
+            }
 
-            if (loadedConfig) {
-                setConfig(loadedConfig);
+            if (result?.config) {
+                setConfig(result.config);
 
-                console.log('[Widget] Loaded config - forceGlobal:', forceGlobalConfig, 'teamName:', loadedConfig.team_name);
+                console.log('[Widget] Loaded config - forceGlobal:', forceGlobalConfig, 'publicTenantId:', publicTenantId, 'teamName:', result.config.team_name);
 
                 // Check if we should auto-open based on config
-                if (loadedConfig.auto_open) {
+                if (result.config.auto_open) {
                     setTimeout(() => {
                         setIsOpen(true);
-                    }, (loadedConfig.auto_open_delay || 5) * 1000);
+                    }, (result.config.auto_open_delay || 5) * 1000);
                 }
             }
         };
         loadConfig();
-    }, [forceGlobalConfig]);
+    }, [forceGlobalConfig, publicTenantId]);
 
     // Communicate with parent window (for iframe mode)
     useEffect(() => {
@@ -136,9 +145,15 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
         setShowPreChat(false);
 
         try {
-            // CRITICAL: Landing page sessions must have tenant_id = NULL (global admin)
-            // Dashboard preview sessions should have the tenant's ID
-            const sessionTenantId = forceGlobalConfig ? null : (config as any)?.tenant_id || null;
+            // CRITICAL: Determine tenant context for session creation
+            let sessionTenantId = null;
+            if (forceGlobalConfig) {
+                sessionTenantId = null;
+            } else if (publicTenantId !== undefined) {
+                sessionTenantId = publicTenantId;
+            } else {
+                sessionTenantId = (config as any)?.tenant_id || null;
+            }
 
             console.log('[Widget] Creating session with tenant_id:', sessionTenantId, 'forceGlobal:', forceGlobalConfig);
 

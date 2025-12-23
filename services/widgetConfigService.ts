@@ -152,9 +152,10 @@ class WidgetConfigService {
     /**
      * Get widget configuration
      */
-    async getConfig(): Promise<{ config: WidgetConfig | null; error: any }> {
+    async getConfig(tenantIdOverride?: string | null): Promise<{ config: WidgetConfig | null; error: any }> {
         try {
-            const tenantId = await this.getTenantId();
+            // Use override if provided (even if null), otherwise try to get from current user session
+            const tenantId = tenantIdOverride !== undefined ? tenantIdOverride : await this.getTenantId();
 
             console.log('[WidgetConfig] Getting config for tenantId:', tenantId);
 
