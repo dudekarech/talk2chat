@@ -25,6 +25,12 @@ import { TenantWidgetConfiguration } from './pages/Tenant/TenantWidgetConfigurat
 import { WidgetEmbedPage } from './pages/WidgetEmbedPage';
 
 const App: React.FC = () => {
+  // SPECIAL BYPASS: If loaded via /widget-embed (server path), render directly
+  // This is used for iframe embedding to bypass X-Frame-Options DENY on the root path
+  if (window.location.pathname === '/widget-embed') {
+    return <WidgetEmbedPage />;
+  }
+
   return (
     <HashRouter>
       <Routes>

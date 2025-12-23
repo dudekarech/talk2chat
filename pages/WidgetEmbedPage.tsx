@@ -8,7 +8,8 @@ import { GlobalChatWidget } from '../components/GlobalChatWidget';
  * It only renders the GlobalChatWidget and handles tenant-specific configuration via query parameters.
  */
 export const WidgetEmbedPage: React.FC = () => {
-    const [searchParams] = useSearchParams();
+    // Extract tenantId from URL query directly to avoid router dependency
+    const searchParams = new URLSearchParams(window.location.search);
     const tenantId = searchParams.get('tenantId');
 
     useEffect(() => {

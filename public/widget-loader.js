@@ -38,7 +38,8 @@
     iframe.id = 'talkchat-widget-iframe';
 
     // Set source with tenantId and base URL
-    var embedUrl = config.baseUrl + '/#/widget-embed?tenantId=' + (config.tenantId || 'global');
+    // Use path /widget-embed instead of hash #/widget-embed to satisfy Vercel headers
+    var embedUrl = config.baseUrl + '/widget-embed?tenantId=' + (config.tenantId || 'global');
     iframe.src = embedUrl;
 
     // Basic styling
