@@ -36,8 +36,8 @@ export const LandingPage: React.FC = () => {
         <Footer />
       </div>
 
-      {/* Global Chat Widget */}
-      <GlobalChatWidget />
+      {/* Global Chat Widget - ALWAYS uses global config for landing page */}
+      <GlobalChatWidget forceGlobalConfig={true} />
     </div>
   );
 };

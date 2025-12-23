@@ -18,9 +18,10 @@ export interface ChatSession {
     visitor_name: string;
     visitor_email?: string;
     visitor_id: string;
-    status: 'open' | 'pending' | 'resolved';
+    status: 'open' | 'pending' | 'resolved' | 'active';
     channel: 'web' | 'mobile';
     assigned_to?: string;
+    tenant_id?: string | null;
     tags: string[];
     visitor_metadata: {
         ip?: string;
@@ -219,6 +220,7 @@ class GlobalChatRealtimeService {
         visitor_email?: string;
         visitor_id: string;
         visitor_metadata?: Partial<ChatSession['visitor_metadata']>;
+        tenant_id?: string | null;
     }): Promise<{ session: ChatSession | null; error: any }> {
         const { data: session, error } = await this.supabase
             .from('global_chat_sessions')
@@ -226,9 +228,10 @@ class GlobalChatRealtimeService {
                 visitor_name: data.visitor_name,
                 visitor_email: data.visitor_email,
                 visitor_id: data.visitor_id,
-                status: 'active',  // Changed from 'open' to 'active' so it shows in agent dashboard
+                status: 'active',
                 channel: 'web',
-                visitor_metadata: data.visitor_metadata || {}
+                visitor_metadata: data.visitor_metadata || {},
+                tenant_id: data.tenant_id // Critical: Pass tenant_id correctly
             })
             .select()
             .single();
@@ -296,13 +299,37 @@ class GlobalChatRealtimeService {
      * Get all chat sessions
      */
     async getSessions(filters?: {
-        status?: 'open' | 'pending' | 'resolved';
+        status?: 'open' | 'pending' | 'resolved' | 'active';
         assigned_to?: string;
+        forceGlobal?: boolean;
     }): Promise<{ sessions: ChatSession[]; error: any }> {
+        // Get tenant_id
+        let tenantId = null;
+
+        if (!filters?.forceGlobal) {
+            const { data: { user } } = await this.supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await this.supabase
+                    .from('user_profiles')
+                    .select('tenant_id')
+                    .eq('user_id', user.id)
+                    .single();
+                tenantId = profile?.tenant_id;
+            }
+        }
+
         let query = this.supabase
             .from('global_chat_sessions')
             .select('*')
             .order('last_activity', { ascending: false });
+
+        if (tenantId) {
+            // Tenant admin sees their own sessions
+            query = query.eq('tenant_id', tenantId);
+        } else {
+            // Global admin ONLY sees sessions where tenant_id IS NULL
+            query = query.is('tenant_id', null);
+        }
 
         if (filters?.status) {
             query = query.eq('status', filters.status);
@@ -362,22 +389,27 @@ class GlobalChatRealtimeService {
         return { config: data as WidgetConfig, error: null };
     }
 
-    /**
-     * Find or create session by visitor ID
-     */
     async findOrCreateSession(visitorData: {
         visitor_name: string;
         visitor_email?: string;
         visitor_id: string;
         visitor_metadata?: Partial<ChatSession['visitor_metadata']>;
+        tenant_id?: string | null;
     }): Promise<{ session: ChatSession | null; error: any }> {
-        // First, try to find an existing active session
-        const { data: existingSession } = await this.supabase
+        // First, try to find an existing active session matching visitor AND tenant_id
+        let findQuery = this.supabase
             .from('global_chat_sessions')
             .select('*')
             .eq('visitor_id', visitorData.visitor_id)
-            .eq('status', 'active')  // Changed from 'open' to 'active'
-            .single();
+            .eq('status', 'active');
+
+        if (visitorData.tenant_id) {
+            findQuery = findQuery.eq('tenant_id', visitorData.tenant_id);
+        } else {
+            findQuery = findQuery.is('tenant_id', null);
+        }
+
+        const { data: existingSession } = await findQuery.maybeSingle();
 
         if (existingSession) {
             console.log('[Realtime] Found existing session:', existingSession);

@@ -18,8 +18,11 @@ import { GlobalSharedInbox } from './pages/GlobalAdmin/GlobalSharedInbox';
 import { WidgetConfiguration } from './pages/GlobalAdmin/WidgetConfiguration';
 import { AgentDashboard } from './pages/AgentDashboard';
 import { RoleBasedRedirect } from './components/RoleBasedRedirect';
-import { TenantDashboard } from './pages/TenantDashboard';
 import { TenantsManagement } from './pages/GlobalAdmin/TenantsManagement';
+import { TenantLayout } from './pages/Tenant/TenantLayout';
+import { TenantDashboardHome } from './pages/Tenant/TenantDashboardHome';
+import { TenantWidgetConfiguration } from './pages/Tenant/TenantWidgetConfiguration';
+import { WidgetEmbedPage } from './pages/WidgetEmbedPage';
 
 const App: React.FC = () => {
   return (
@@ -36,19 +39,22 @@ const App: React.FC = () => {
         {/* Agent Dashboard */}
         <Route path="/agent/dashboard" element={<AgentDashboard />} />
 
-        {/* Tenant Admin Dashboard */}
-        <Route path="/tenant/dashboard" element={<TenantDashboard />} />
-        <Route path="/tenant/widget" element={<TenantDashboard />} />
-        <Route path="/tenant/team" element={<TenantDashboard />} />
-        <Route path="/tenant/chats" element={<TenantDashboard />} />
-        <Route path="/tenant/settings" element={<TenantDashboard />} />
-        <Route path="/tenant/analytics" element={<TenantDashboard />} />
+        {/* Tenant Routes */}
+        <Route path="/tenant" element={<TenantLayout />}>
+          <Route path="dashboard" element={<TenantDashboardHome />} />
+          <Route path="widget" element={<TenantWidgetConfiguration />} />
+          <Route path="team" element={<Users />} />
+          <Route path="chats" element={<GlobalSharedInbox isGlobalMode={false} />} />
+          <Route path="settings" element={<TenantDashboardHome />} /> {/* Placeholder */}
+          <Route path="analytics" element={<TenantDashboardHome />} /> {/* Placeholder */}
+          <Route index element={<Navigate to="dashboard" replace />} />
+        </Route>
 
         {/* Global Admin Routes */}
         <Route path="/global/admin" element={<GlobalAdminLogin />} />
         <Route path="/global" element={<ProtectedRoute><GlobalAdminLayout /></ProtectedRoute>}>
           <Route path="dashboard" element={<DashboardHome />} />
-          <Route path="inbox" element={<GlobalSharedInbox />} />
+          <Route path="inbox" element={<GlobalSharedInbox isGlobalMode={true} />} />
           <Route path="widget" element={<WidgetConfiguration />} />
           <Route path="tenants" element={<TenantsManagement />} />
           <Route path="billing" element={<Billing />} />
@@ -59,6 +65,7 @@ const App: React.FC = () => {
           <Route index element={<Navigate to="dashboard" replace />} />
         </Route>
 
+        <Route path="/widget-embed" element={<WidgetEmbedPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>

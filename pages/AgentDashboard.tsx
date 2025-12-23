@@ -121,10 +121,19 @@ export const AgentDashboard: React.FC = () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
+            const { data: profile } = await supabase
+                .from('user_profiles')
+                .select('tenant_id')
+                .eq('user_id', user.id)
+                .single();
+
+            if (!profile?.tenant_id) return;
+
             // Count total active chats (any status)
             const { count: totalCount, error: totalError } = await supabase
                 .from('global_chat_sessions')
                 .select('*', { count: 'exact', head: true })
+                .eq('tenant_id', profile.tenant_id)
                 .in('status', ['active', 'pending', 'waiting']);
 
             // Count completed chats today
@@ -132,6 +141,7 @@ export const AgentDashboard: React.FC = () => {
             const { count: completedCount, error: completedError } = await supabase
                 .from('global_chat_sessions')
                 .select('*', { count: 'exact', head: true })
+                .eq('tenant_id', profile.tenant_id)
                 .eq('status', 'completed')
                 .gte('created_at', `${today}T00:00:00`)
                 .lte('created_at', `${today}T23:59:59`);
@@ -153,10 +163,22 @@ export const AgentDashboard: React.FC = () => {
     };
 
     const loadChats = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('tenant_id')
+            .eq('user_id', user.id)
+            .single();
+
+        if (!profile?.tenant_id) return;
+
         // Show ALL active/pending/waiting chats (unassigned, AI handovers, and assigned)
         const { data } = await supabase
             .from('global_chat_sessions')
             .select('*')
+            .eq('tenant_id', profile.tenant_id)
             .in('status', ['active', 'pending', 'waiting', 'unassigned'])
             .order('created_at', { ascending: false });
 

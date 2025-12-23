@@ -22,9 +22,11 @@ import {
     AlertCircle
 } from 'lucide-react';
 import { useWidgetConfig } from '../../hooks/useWidgetConfig';
+import { TenantWidgetPreview } from '../../components/TenantWidgetPreview';
 
 export const WidgetConfiguration: React.FC = () => {
     const [activeSection, setActiveSection] = useState('appearance');
+    const [showPreview, setShowPreview] = useState(false);
 
     const {
         config: widgetConfig,
@@ -91,11 +93,12 @@ export const WidgetConfiguration: React.FC = () => {
     };
 
     const handlePreview = () => {
-        window.open('/#/?preview=true', '_blank');
+        setShowPreview(true);
     };
 
     const sections = [
         { id: 'appearance', label: 'Appearance', icon: Palette },
+        { id: 'installation', label: 'Installation', icon: Code },
         { id: 'content', label: 'Content & Messages', icon: MessageSquare },
         { id: 'behavior', label: 'Behavior', icon: Clock },
         { id: 'prechat', label: 'Pre-Chat Form', icon: FileText },
@@ -356,6 +359,94 @@ export const WidgetConfiguration: React.FC = () => {
                                             onChange={(checked) => setWidgetConfig({ ...widgetConfig, showTimestamps: checked })}
                                         />
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* INSTALLATION SECTION */}
+                    {activeSection === 'installation' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Installation</h3>
+                                <p className="text-slate-400">Add the following code to your website to enable the chat widget.</p>
+                            </div>
+
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                                <div className="p-4 bg-slate-700/30 border-b border-slate-700 flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <Code className="w-4 h-4 text-blue-400" />
+                                        <span className="text-sm font-medium text-slate-200">Widget Embed Script</span>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            const codeElement = document.getElementById('embed-code-snippet');
+                                            if (codeElement) {
+                                                navigator.clipboard.writeText(codeElement.innerText);
+                                                // We can use a more subtle toast later, but alert works for now
+                                                alert('Embed code copied to clipboard!');
+                                            }
+                                        }}
+                                        className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+                                    >
+                                        <Check className="w-3 h-3" />
+                                        Copy Code
+                                    </button>
+                                </div>
+                                <div className="p-6 bg-slate-900/50">
+                                    <pre id="embed-code-snippet" className="text-sm font-mono text-blue-300 leading-relaxed overflow-x-auto whitespace-pre-wrap">
+                                        {`<!-- TalkChat Widget Embed Code -->
+<script>
+  (function(w,d,s,o,f,js,fjs){
+    w['TalkChat-Widget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};
+    js=d.createElement(s),fjs=d.getElementsByTagName(s)[0];
+    js.id=o;js.src=f;js.async=1;fjs.parentNode.insertBefore(js,fjs);
+  }(window,document,'script','tkc','${window.location.origin}/widget-loader.js'));
+  tkc('init', {
+    tenantId: '${widgetConfig.tenantId || 'global'}',
+    baseUrl: '${window.location.origin}'
+  });
+</script>`}
+                                    </pre>
+                                </div>
+                                <div className="p-4 bg-blue-500/5 border-t border-slate-700">
+                                    <div className="flex gap-3">
+                                        <div className="mt-0.5">
+                                            <AlertCircle className="w-4 h-4 text-blue-400" />
+                                        </div>
+                                        <p className="text-xs text-slate-400 leading-relaxed">
+                                            Paste this snippet right before the closing <code className="text-blue-300">&lt;/body&gt;</code> tag on every page where you want the widget to appear.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="bg-slate-800/50 border border-slate-700 p-5 rounded-xl">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <Globe className="w-5 h-5 text-purple-400" />
+                                        <h4 className="font-semibold text-white">Domain Whitelisting</h4>
+                                    </div>
+                                    <p className="text-sm text-slate-400 mb-4">Ensure your website's domain is allowed in the security settings to prevent unauthorized usage.</p>
+                                    <button
+                                        onClick={() => setActiveSection('security')}
+                                        className="text-sm text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                                    >
+                                        Configure Security →
+                                    </button>
+                                </div>
+                                <div className="bg-slate-800/50 border border-slate-700 p-5 rounded-xl">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <Sparkles className="w-5 h-5 text-orange-400" />
+                                        <h4 className="font-semibold text-white">Customization</h4>
+                                    </div>
+                                    <p className="text-sm text-slate-400 mb-4">Your changes are applied in real-time. Any updates made here will reflect instantly on your website.</p>
+                                    <button
+                                        onClick={() => setActiveSection('appearance')}
+                                        className="text-sm text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                                    >
+                                        Edit Appearance →
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -861,6 +952,12 @@ export const WidgetConfiguration: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Widget Preview Modal */}
+            <TenantWidgetPreview
+                isOpen={showPreview}
+                onClose={() => setShowPreview(false)}
+            />
         </div>
     );
 };

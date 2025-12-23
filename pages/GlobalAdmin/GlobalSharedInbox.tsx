@@ -28,8 +28,9 @@ interface ChatListItem {
     visitorEmail?: string;
     lastMessage: string;
     timestamp: string;
-    status: 'open' | 'pending' | 'resolved';
+    status: 'open' | 'pending' | 'resolved' | 'active';
     assignedTo?: string;
+    tenant_id?: string | null;
     tags: string[];
     unreadCount: number;
     avatarColor: string;
@@ -37,7 +38,12 @@ interface ChatListItem {
     location: string;
 }
 
-export const GlobalSharedInbox: React.FC = () => {
+interface GlobalSharedInboxProps {
+    /** If true, strictly shows global chats (tenant_id IS NULL). If false/undefined, uses user context. */
+    isGlobalMode?: boolean;
+}
+
+export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMode = false }) => {
     const [selectedChat, setSelectedChat] = useState<string | null>(null);
     const [messageInput, setMessageInput] = useState('');
     const [activeTab, setActiveTab] = useState<'all' | 'mine' | 'unassigned'>('all');
@@ -52,37 +58,68 @@ export const GlobalSharedInbox: React.FC = () => {
     // Load all chat sessions on mount
     useEffect(() => {
         loadChatSessions();
-    }, []);
+    }, [isGlobalMode]);
 
     // Subscribe to real-time updates
     useEffect(() => {
         setConnectionStatus('connecting');
 
-        const channel = globalChatService.subscribeToAllSessions(
-            (newSession: ChatSession) => {
-                console.log('New session created:', newSession);
-                addChatToList(newSession);
-            },
-            (newMessage: RealtimeChatMessage) => {
-                console.log('New message received:', newMessage);
-                handleNewMessage(newMessage);
-            },
-            (updatedSession: Partial<ChatSession>) => {
-                console.log('Session updated:', updatedSession);
-                if (updatedSession.id) {
-                    updateChatInList(updatedSession.id, updatedSession);
+        const setupSubscription = async () => {
+            // Get current user's tenant_id for real-time filtering (unless forced to global)
+            let currentUserTenantId: string | null = null;
+
+            if (!isGlobalMode) {
+                const { data: { user } } = await globalChatService.supabase.auth.getUser();
+                if (user) {
+                    const { data: profile } = await globalChatService.supabase
+                        .from('user_profiles')
+                        .select('tenant_id')
+                        .eq('user_id', user.id)
+                        .single();
+                    currentUserTenantId = profile?.tenant_id || null;
                 }
             }
-        );
 
-        if (channel) {
-            setConnectionStatus('connected');
-        }
+            console.log('[Inbox] Setting up subscription. Mode:', isGlobalMode ? 'GLOBAL' : 'CONTEXTAL', 'tenantId:', currentUserTenantId);
+
+            const channel = globalChatService.subscribeToAllSessions(
+                (newSession: ChatSession) => {
+                    // CRITICAL: Filter real-time sessions to prevent leakage
+                    const isMatch = isGlobalMode
+                        ? newSession.tenant_id === null               // Global mode: Only NULL
+                        : (currentUserTenantId
+                            ? newSession.tenant_id === currentUserTenantId // Tenant context
+                            : newSession.tenant_id === null                // Fallback global context
+                        );
+
+                    if (isMatch) {
+                        console.log('[Inbox] New session matches context:', newSession);
+                        addChatToList(newSession);
+                    } else {
+                        console.log('[Inbox] Ignoring session (different context):', newSession.tenant_id);
+                    }
+                },
+                (newMessage: RealtimeChatMessage) => {
+                    handleNewMessage(newMessage);
+                },
+                (updatedSession: Partial<ChatSession> & { id: string }) => {
+                    if (updatedSession.id) {
+                        updateChatInList(updatedSession.id, updatedSession);
+                    }
+                }
+            );
+
+            if (channel) {
+                setConnectionStatus('connected');
+            }
+        };
+
+        setupSubscription();
 
         return () => {
             globalChatService.unsubscribeAll();
         };
-    }, []);
+    }, [isGlobalMode]);
 
     // Load messages when chat is selected
     useEffect(() => {
@@ -94,7 +131,10 @@ export const GlobalSharedInbox: React.FC = () => {
     const loadChatSessions = async () => {
         setIsLoading(true);
         try {
-            const { sessions, error } = await globalChatService.getSessions();
+            // Updated to pass a forceGlobal flag if we are in global mode
+            const { sessions, error } = await globalChatService.getSessions({
+                forceGlobal: isGlobalMode
+            });
 
             if (error) {
                 console.error('Error loading sessions:', error);
@@ -107,8 +147,9 @@ export const GlobalSharedInbox: React.FC = () => {
                 visitorEmail: session.visitor_email,
                 lastMessage: 'Click to view conversation',
                 timestamp: formatTimestamp(session.last_activity),
-                status: session.status,
+                status: session.status as 'open' | 'pending' | 'resolved',
                 assignedTo: session.assigned_to,
+                tenant_id: session.tenant_id,
                 tags: session.tags || [],
                 unreadCount: 0,
                 avatarColor: avatarColors[index % avatarColors.length],

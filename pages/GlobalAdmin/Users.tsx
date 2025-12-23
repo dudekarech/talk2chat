@@ -69,12 +69,34 @@ export const Users: React.FC = () => {
         try {
             setIsLoading(true);
 
-            // Load user profiles (this doesn't require admin access)
-            const { data: profiles, error } = await supabase
+            // Get current user to check role/tenant
+            const { data: { user: currentUser } } = await supabase.auth.getUser();
+            if (!currentUser) return;
+
+            const { data: currentProfile } = await supabase
+                .from('user_profiles')
+                .select('role, tenant_id')
+                .eq('user_id', currentUser.id)
+                .single();
+
+            let query = supabase
                 .from('user_profiles')
                 .select('*')
                 .neq('status', 'deleted')
                 .order('created_at', { ascending: false });
+
+            // If not global admin, filter by tenant
+            if (currentProfile && !['super_admin', 'admin'].includes(currentProfile.role)) {
+                if (currentProfile.tenant_id) {
+                    query = query.eq('tenant_id', currentProfile.tenant_id);
+                } else {
+                    setUsers([]);
+                    setIsLoading(false);
+                    return;
+                }
+            }
+
+            const { data: profiles, error } = await query;
 
             if (error) throw error;
 
@@ -104,7 +126,15 @@ export const Users: React.FC = () => {
         e.preventDefault();
 
         try {
-            // Create a pending user profile (user_id will be set when they sign up)
+            // Get current user's tenant_id
+            const { data: { user: currentUser } } = await supabase.auth.getUser();
+            const { data: currentProfile } = await supabase
+                .from('user_profiles')
+                .select('tenant_id')
+                .eq('user_id', currentUser?.id)
+                .single();
+
+            // Create a pending user profile
             const { data, error } = await supabase
                 .from('user_profiles')
                 .insert({
@@ -113,7 +143,8 @@ export const Users: React.FC = () => {
                     role: formData.role,
                     phone: formData.phone,
                     department: formData.department,
-                    status: 'pending'
+                    status: 'pending',
+                    tenant_id: currentProfile?.tenant_id // Assign to current tenant
                 })
                 .select()
                 .single();

@@ -12,6 +12,11 @@ interface Message {
     senderName?: string;
 }
 
+interface GlobalChatWidgetProps {
+    /** Force use of global config (for landing page). Ignores logged-in user's tenant. */
+    forceGlobalConfig?: boolean;
+}
+
 // Generate a unique visitor ID (persisted in localStorage)
 const getOrCreateVisitorId = (): string => {
     let visitorId = localStorage.getItem('talkchat_visitor_id');
@@ -22,7 +27,7 @@ const getOrCreateVisitorId = (): string => {
     return visitorId;
 };
 
-export const GlobalChatWidget: React.FC = () => {
+export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalConfig = false }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -49,9 +54,15 @@ export const GlobalChatWidget: React.FC = () => {
     // Load configuration
     useEffect(() => {
         const loadConfig = async () => {
-            const { config: loadedConfig } = await widgetConfigService.getConfig();
+            // CRITICAL: Landing page MUST use global config only
+            const { config: loadedConfig } = forceGlobalConfig
+                ? await widgetConfigService.getGlobalConfig()  // Landing page
+                : await widgetConfigService.getConfig();        // Dashboard preview
+
             if (loadedConfig) {
                 setConfig(loadedConfig);
+
+                console.log('[Widget] Loaded config - forceGlobal:', forceGlobalConfig, 'teamName:', loadedConfig.team_name);
 
                 // Check if we should auto-open based on config
                 if (loadedConfig.auto_open) {
@@ -62,18 +73,18 @@ export const GlobalChatWidget: React.FC = () => {
             }
         };
         loadConfig();
+    }, [forceGlobalConfig]);
 
-        // Check for preview mode in URL
-        // Hash router format: /#/?preview=true
-        try {
-            const hash = window.location.hash;
-            if (hash.includes('preview=true')) {
-                setIsOpen(true);
-            }
-        } catch (e) {
-            console.error('Error checking preview mode:', e);
+    // Communicate with parent window (for iframe mode)
+    useEffect(() => {
+        if (window.parent === window) return;
+
+        if (isOpen && !isMinimized) {
+            window.parent.postMessage({ type: 'TKC_WIDGET_OPEN' }, '*');
+        } else {
+            window.parent.postMessage({ type: 'TKC_WIDGET_CLOSE' }, '*');
         }
-    }, []);
+    }, [isOpen, isMinimized]);
 
     // Subscribe to real-time updates when session is active
     useEffect(() => {
@@ -125,6 +136,12 @@ export const GlobalChatWidget: React.FC = () => {
         setShowPreChat(false);
 
         try {
+            // CRITICAL: Landing page sessions must have tenant_id = NULL (global admin)
+            // Dashboard preview sessions should have the tenant's ID
+            const sessionTenantId = forceGlobalConfig ? null : (config as any)?.tenant_id || null;
+
+            console.log('[Widget] Creating session with tenant_id:', sessionTenantId, 'forceGlobal:', forceGlobalConfig);
+
             // Find or create session
             const { session, error } = await globalChatService.findOrCreateSession({
                 visitor_name: visitorName,
@@ -134,7 +151,8 @@ export const GlobalChatWidget: React.FC = () => {
                     browser: navigator.userAgent,
                     platform: navigator.platform,
                     currentUrl: window.location.href
-                }
+                },
+                tenant_id: sessionTenantId
             });
 
             if (error) {

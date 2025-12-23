@@ -2,6 +2,7 @@ import { supabase } from './globalChatRealtimeService';
 
 export interface WidgetConfig {
     id: string;
+    tenant_id?: string;
     config_key: string;
 
     // Appearance
@@ -121,24 +122,79 @@ export interface WidgetConfig {
 }
 
 class WidgetConfigService {
+    private async getTenantId(): Promise<string | null> {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            console.log('[WidgetConfig] No authenticated user - returning NULL (global admin fallback)');
+            return null;
+        }
+
+        const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('tenant_id, role, name')
+            .eq('user_id', user.id)
+            .single();
+
+        const tenantId = profile?.tenant_id || null;
+
+        console.log('[WidgetConfig] ========== TENANT CONTEXT ==========');
+        console.log('[WidgetConfig] User ID:', user.id);
+        console.log('[WidgetConfig] User Email:', user.email);
+        console.log('[WidgetConfig] Profile Name:', profile?.name);
+        console.log('[WidgetConfig] Profile Role:', profile?.role);
+        console.log('[WidgetConfig] Tenant ID:', tenantId);
+        console.log('[WidgetConfig] Is Global Admin:', tenantId === null);
+        console.log('[WidgetConfig] =====================================');
+
+        return tenantId;
+    }
+
     /**
      * Get widget configuration
      */
     async getConfig(): Promise<{ config: WidgetConfig | null; error: any }> {
         try {
-            const { data, error } = await supabase
+            const tenantId = await this.getTenantId();
+
+            console.log('[WidgetConfig] Getting config for tenantId:', tenantId);
+
+            let query = supabase
                 .from('global_widget_config')
-                .select('*')
-                .eq('config_key', 'global_widget')
-                .maybeSingle();
+                .select('*');
+
+            if (tenantId) {
+                // TENANT: Get configuration for specific tenant
+                query = query.eq('tenant_id', tenantId);
+                console.log('[WidgetConfig] Querying for tenant:', tenantId);
+            } else {
+                // GLOBAL ADMIN: Get configuration for landing page ONLY
+                // CRITICAL: Must explicitly check tenant_id IS NULL
+                query = query.eq('config_key', 'global_widget').is('tenant_id', null);
+                console.log('[WidgetConfig] Querying for global config (tenant_id IS NULL)');
+            }
+
+            const { data, error } = await query.maybeSingle();
 
             if (error) {
                 // If no config exists, create one with defaults
                 if (error.code === 'PGRST116') {
-                    return this.createDefaultConfig();
+                    console.log('[WidgetConfig] No config found, creating default');
+                    return this.createDefaultConfig(tenantId);
                 }
                 console.error('[WidgetConfig] Error fetching config:', error);
                 return { config: null, error };
+            }
+
+            if (!data && tenantId) {
+                // If no data found but we have a tenantId, create default
+                console.log('[WidgetConfig] No tenant config found, creating default');
+                return this.createDefaultConfig(tenantId);
+            }
+
+            if (!data && !tenantId) {
+                // If no global config found, create it
+                console.log('[WidgetConfig] No global config found, creating default');
+                return this.createDefaultConfig(null);
             }
 
             console.log('[WidgetConfig] Config loaded:', data);
@@ -150,14 +206,49 @@ class WidgetConfigService {
     }
 
     /**
+     * Get GLOBAL widget configuration (for landing page)
+     * This ALWAYS returns the global config regardless of logged-in user
+     * CRITICAL: Landing page must NEVER use tenant configs
+     */
+    async getGlobalConfig(): Promise<{ config: WidgetConfig | null; error: any }> {
+        try {
+            console.log('[WidgetConfig] Getting GLOBAL config (forcing tenant_id IS NULL)');
+
+            const { data, error } = await supabase
+                .from('global_widget_config')
+                .select('*')
+                .eq('config_key', 'global_widget')
+                .is('tenant_id', null)
+                .maybeSingle();
+
+            if (error) {
+                console.error('[WidgetConfig] Error fetching global config:', error);
+                return { config: null, error };
+            }
+
+            if (!data) {
+                console.log('[WidgetConfig] No global config found, creating default');
+                return this.createDefaultConfig(null);
+            }
+
+            console.log('[WidgetConfig] Global config loaded:', data);
+            return { config: data as WidgetConfig, error: null };
+        } catch (err) {
+            console.error('[WidgetConfig] Exception fetching global config:', err);
+            return { config: null, error: err };
+        }
+    }
+
+    /**
      * Create default configuration
      */
-    async createDefaultConfig(): Promise<{ config: WidgetConfig | null; error: any }> {
+    async createDefaultConfig(tenantId: string | null): Promise<{ config: WidgetConfig | null; error: any }> {
         try {
             const { data, error } = await supabase
                 .from('global_widget_config')
                 .insert({
-                    config_key: 'global_widget'
+                    config_key: tenantId ? `tenant_${tenantId}` : 'global_widget',
+                    tenant_id: tenantId
                     // All other fields will use their default values from the schema
                 })
                 .select()
@@ -181,25 +272,44 @@ class WidgetConfigService {
      */
     async updateConfig(updates: Partial<WidgetConfig>): Promise<{ config: WidgetConfig | null; error: any }> {
         try {
-            // Remove id and config_key from updates if present
-            const { id, config_key, updated_at, ...cleanUpdates } = updates as any;
+            const tenantId = await this.getTenantId();
 
-            const { data, error } = await supabase
+            console.log('[WidgetConfig] Updating config for tenantId:', tenantId);
+
+            // Remove id and config_key from updates if present
+            const { id, config_key, updated_at, tenant_id, ...cleanUpdates } = updates as any;
+
+            let query = supabase
                 .from('global_widget_config')
                 .update({
                     ...cleanUpdates,
                     updated_at: new Date().toISOString()
-                })
-                .eq('config_key', 'global_widget')
-                .select()
-                .maybeSingle();
+                });
+
+            if (tenantId) {
+                // TENANT: Update configuration for specific tenant ONLY
+                query = query.eq('tenant_id', tenantId);
+                console.log('[WidgetConfig] Updating for tenant:', tenantId);
+            } else {
+                // GLOBAL ADMIN: Update configuration for landing page ONLY
+                // CRITICAL: Must explicitly check tenant_id IS NULL
+                query = query.eq('config_key', 'global_widget').is('tenant_id', null);
+                console.log('[WidgetConfig] Updating global config (tenant_id IS NULL)');
+            }
+
+            const { data, error } = await query.select().maybeSingle();
 
             if (error) {
                 console.error('[WidgetConfig] Error updating config:', error);
                 return { config: null, error };
             }
 
-            console.log('[WidgetConfig] Config updated:', data);
+            if (!data) {
+                console.error('[WidgetConfig] No config found to update. TenantId:', tenantId);
+                return { config: null, error: new Error('No configuration found to update') };
+            }
+
+            console.log('[WidgetConfig] Config updated successfully:', data);
             return { config: data as WidgetConfig, error: null };
         } catch (err) {
             console.error('[WidgetConfig] Exception updating config:', err);
@@ -212,14 +322,30 @@ class WidgetConfigService {
      */
     async resetToDefaults(): Promise<{ config: WidgetConfig | null; error: any }> {
         try {
-            // Delete existing config
-            await supabase
+            const tenantId = await this.getTenantId();
+
+            console.log('[WidgetConfig] Resetting config for tenantId:', tenantId);
+
+            let query = supabase
                 .from('global_widget_config')
-                .delete()
-                .eq('config_key', 'global_widget');
+                .delete();
+
+            if (tenantId) {
+                // TENANT: Delete tenant-specific configuration ONLY
+                query = query.eq('tenant_id', tenantId);
+                console.log('[WidgetConfig] Resetting for tenant:', tenantId);
+            } else {
+                // GLOBAL ADMIN: Delete global configuration ONLY
+                // CRITICAL: Must explicitly check tenant_id IS NULL
+                query = query.eq('config_key', 'global_widget').is('tenant_id', null);
+                console.log('[WidgetConfig] Resetting global config (tenant_id IS NULL)');
+            }
+
+            await query;
 
             // Create new default config
-            return this.createDefaultConfig();
+            console.log('[WidgetConfig] Creating new default config');
+            return this.createDefaultConfig(tenantId);
         } catch (err) {
             console.error('[WidgetConfig] Exception resetting config:', err);
             return { config: null, error: err };
@@ -230,6 +356,12 @@ class WidgetConfigService {
      * Subscribe to configuration changes (real-time)
      */
     subscribeToConfigChanges(callback: (config: WidgetConfig) => void) {
+        // This is tricky because we need tenantId to subscribe to specific row.
+        // For now, we'll subscribe to all and filter in callback or rely on RLS (if enabled).
+        // Better: Fetch tenantId first then subscribe. But this method is synchronous in signature.
+        // We'll just subscribe to the table and let RLS handle visibility if possible, 
+        // or filter by checking if the update matches our loaded config ID.
+
         const channel = supabase
             .channel('widget_config_changes')
             .on(
@@ -237,8 +369,7 @@ class WidgetConfigService {
                 {
                     event: 'UPDATE',
                     schema: 'public',
-                    table: 'global_widget_config',
-                    filter: 'config_key=eq.global_widget'
+                    table: 'global_widget_config'
                 },
                 (payload) => {
                     console.log('[WidgetConfig] Config updated (realtime):', payload.new);
