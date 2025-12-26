@@ -1,25 +1,25 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Message, SenderType } from '../types';
 
 // Declare process to avoid TS errors if types are missing
 declare const process: any;
 
 const getAiClient = () => {
-  // Use process.env.API_KEY as per Google GenAI coding guidelines
-  const apiKey = process.env.API_KEY;
-  
+  // Try to get API key from environment
+  const apiKey = process.env.API_KEY || (typeof window !== 'undefined' ? (window as any).GEMINI_API_KEY : '');
+
   if (!apiKey) {
     console.warn("API_KEY is missing. AI features will be disabled or simulated.");
     return null;
   }
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenerativeAI(apiKey);
 };
 
 /**
  * Generates a suggested reply for the agent based on chat history.
  */
 export const generateAgentSuggestion = async (
-  chatHistory: Message[], 
+  chatHistory: Message[],
   visitorName: string,
   businessContext: string,
   temperature: number = 0.7
@@ -46,14 +46,15 @@ export const generateAgentSuggestion = async (
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
         temperature: temperature,
       }
     });
-    return response.text ? response.text.trim() : "";
+    const response = await result.response;
+    return response.text() ? response.text().trim() : "";
   } catch (error) {
     console.error("Gemini API Error:", error);
     return "I'm having trouble connecting to the AI brain right now.";
@@ -67,17 +68,17 @@ export const simulateVisitorReply = async (
   chatHistory: Message[]
 ): Promise<string> => {
   const ai = getAiClient();
-  
+
   // Fallback simulation if no API key is present
   if (!ai) {
-      const responses = [
-          "That sounds great, thanks!",
-          "Can you tell me more about pricing?",
-          "I'm still not sure about the integration.",
-          "Does this work with WordPress?",
-          "Okay, I'll check the docs."
-      ];
-      return responses[Math.floor(Math.random() * responses.length)];
+    const responses = [
+      "That sounds great, thanks!",
+      "Can you tell me more about pricing?",
+      "I'm still not sure about the integration.",
+      "Does this work with WordPress?",
+      "Okay, I'll check the docs."
+    ];
+    return responses[Math.floor(Math.random() * responses.length)];
   }
 
   const conversationText = chatHistory
@@ -96,11 +97,12 @@ export const simulateVisitorReply = async (
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
     });
-    return response.text ? response.text.trim() : "Thanks for the info.";
+    const response = await result.response;
+    return response.text() ? response.text().trim() : "Thanks for the info.";
   } catch (error) {
     return "Thanks for the info.";
   }
