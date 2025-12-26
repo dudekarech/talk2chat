@@ -30,7 +30,12 @@ import {
 import { useWidgetConfig } from '../../hooks/useWidgetConfig';
 import { TenantWidgetPreview } from '../../components/TenantWidgetPreview';
 
-export const WidgetConfiguration: React.FC = () => {
+interface WidgetConfigurationProps {
+    /** Force use of global config (for landing page). Ignores logged-in user's tenant. */
+    forceGlobal?: boolean;
+}
+
+export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceGlobal = false }) => {
     const [activeSection, setActiveSection] = useState('appearance');
     const [showPreview, setShowPreview] = useState(false);
 
@@ -44,7 +49,7 @@ export const WidgetConfiguration: React.FC = () => {
         saveConfig,
         resetToDefaults,
         reloadConfig
-    } = useWidgetConfig();
+    } = useWidgetConfig(forceGlobal);
 
     // Auto-hide success message after 3 seconds
     useEffect(() => {
@@ -1080,6 +1085,7 @@ export const WidgetConfiguration: React.FC = () => {
             <TenantWidgetPreview
                 isOpen={showPreview}
                 onClose={() => setShowPreview(false)}
+                forceGlobal={forceGlobal}
             />
         </div>
     );

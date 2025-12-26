@@ -61,7 +61,7 @@ const App: React.FC = () => {
         <Route path="/global" element={<ProtectedRoute><GlobalAdminLayout /></ProtectedRoute>}>
           <Route path="dashboard" element={<DashboardHome />} />
           <Route path="inbox" element={<GlobalSharedInbox isGlobalMode={true} />} />
-          <Route path="widget" element={<WidgetConfiguration />} />
+          <Route path="widget" element={<WidgetConfiguration forceGlobal={true} />} />
           <Route path="tenants" element={<TenantsManagement />} />
           <Route path="billing" element={<Billing />} />
           <Route path="users" element={<Users />} />

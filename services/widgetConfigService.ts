@@ -280,9 +280,10 @@ class WidgetConfigService {
     /**
      * Update widget configuration
      */
-    async updateConfig(updates: Partial<WidgetConfig>): Promise<{ config: WidgetConfig | null; error: any }> {
+    async updateConfig(updates: Partial<WidgetConfig>, tenantIdOverride?: string | null): Promise<{ config: WidgetConfig | null; error: any }> {
         try {
-            const tenantId = await this.getTenantId();
+            // Use override if provided, otherwise try to get from current user session
+            const tenantId = tenantIdOverride !== undefined ? tenantIdOverride : await this.getTenantId();
 
             console.log('[WidgetConfig] Updating config for tenantId:', tenantId);
 
@@ -330,9 +331,10 @@ class WidgetConfigService {
     /**
      * Reset configuration to defaults
      */
-    async resetToDefaults(): Promise<{ config: WidgetConfig | null; error: any }> {
+    async resetToDefaults(tenantIdOverride?: string | null): Promise<{ config: WidgetConfig | null; error: any }> {
         try {
-            const tenantId = await this.getTenantId();
+            // Use override if provided, otherwise try to get from current user session
+            const tenantId = tenantIdOverride !== undefined ? tenantIdOverride : await this.getTenantId();
 
             console.log('[WidgetConfig] Resetting config for tenantId:', tenantId);
 

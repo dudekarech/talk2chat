@@ -5,6 +5,8 @@ import { GlobalChatWidget } from './GlobalChatWidget';
 interface TenantWidgetPreviewProps {
     isOpen: boolean;
     onClose: () => void;
+    /** Force use of global config (for landing page). Ignores logged-in user's tenant. */
+    forceGlobal?: boolean;
 }
 
 /**
@@ -12,7 +14,7 @@ interface TenantWidgetPreviewProps {
  * Displays a preview of the tenant's chat widget within their dashboard
  * This prevents tenants from accessing the global TalkChat landing page
  */
-export const TenantWidgetPreview: React.FC<TenantWidgetPreviewProps> = ({ isOpen, onClose }) => {
+export const TenantWidgetPreview: React.FC<TenantWidgetPreviewProps> = ({ isOpen, onClose, forceGlobal = false }) => {
     if (!isOpen) return null;
 
     return (
@@ -95,8 +97,8 @@ export const TenantWidgetPreview: React.FC<TenantWidgetPreviewProps> = ({ isOpen
                         </div>
                     </div>
 
-                    {/* The Actual Widget - This will use tenant's configuration */}
-                    <GlobalChatWidget />
+                    {/* The Actual Widget - This will use correct configuration */}
+                    <GlobalChatWidget forceGlobalConfig={forceGlobal} />
                 </div>
 
                 {/* Footer Info */}

@@ -29,7 +29,7 @@ const camelToSnake = (obj: any): any => {
     return obj;
 };
 
-export function useWidgetConfig() {
+export function useWidgetConfig(forceGlobal: boolean = false) {
     const [config, setConfig] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -39,12 +39,13 @@ export function useWidgetConfig() {
     // Load configuration on mount
     useEffect(() => {
         loadConfig();
-    }, []);
+    }, [forceGlobal]);
 
     const loadConfig = async () => {
         setIsLoading(true);
         try {
-            const { config: dbConfig, error } = await widgetConfigService.getConfig();
+            // If forceGlobal is true, tell service to get config with NULL tenantId
+            const { config: dbConfig, error } = await widgetConfigService.getConfig(forceGlobal ? null : undefined);
 
             if (error) {
                 console.error('Error loading widget config:', error);
@@ -72,7 +73,11 @@ export function useWidgetConfig() {
             // Convert camelCase to snake_case for database
             const snakeUpdates = camelToSnake(updates);
 
-            const { config: updatedConfig, error } = await widgetConfigService.updateConfig(snakeUpdates);
+            // Pass the forceGlobal context to the service
+            const { config: updatedConfig, error } = await widgetConfigService.updateConfig(
+                snakeUpdates,
+                forceGlobal ? null : undefined
+            );
 
             if (error) {
                 console.error('Error saving widget config:', error);
@@ -104,7 +109,10 @@ export function useWidgetConfig() {
     const resetToDefaults = async () => {
         setIsSaving(true);
         try {
-            const { config: defaultConfig, error } = await widgetConfigService.resetToDefaults();
+            // Pass the forceGlobal context to the service
+            const { config: defaultConfig, error } = await widgetConfigService.resetToDefaults(
+                forceGlobal ? null : undefined
+            );
 
             if (error) {
                 console.error('Error resetting to defaults:', error);
