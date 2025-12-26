@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, X, Minimize2, Paperclip, Smile, MessageSquare } from 'lucide-react';
 import { globalChatService, ChatMessage as RealtimeChatMessage, ChatSession } from '../services/globalChatRealtimeService';
 import { widgetConfigService, WidgetConfig } from '../services/widgetConfigService';
+import { aiService } from '../services/aiService';
 import { VisitorInfoPanel } from './VisitorInfoPanel';
 
 interface Message {
@@ -267,6 +268,45 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
                         ? { ...m, id: message.id }
                         : m
                 ));
+
+                // AI AUTO-RESPOND LOGIC
+                if (config?.aiEnabled && config?.aiAutoRespond) {
+                    console.log('[Widget] Triggering AI response...');
+
+                    // Show a temporary typing indicator if we were to have one, 
+                    // or just delay slightly for realism
+                    setTimeout(async () => {
+                        try {
+                            // Prepare history for Gemini
+                            const history = messages
+                                .filter(m => m.sender === 'visitor' || m.sender === 'agent' || m.sender === 'system')
+                                .slice(-10) // Last 10 messages
+                                .map(m => ({
+                                    role: m.sender === 'visitor' ? 'user' : 'model',
+                                    parts: [{ text: m.content }]
+                                } as any));
+
+                            const aiResponse = await aiService.getAIResponse({
+                                message: messageContent,
+                                history: history,
+                                instructions: config?.aiKnowledgeBase || 'Follow general helpful assistant guidelines.',
+                                provider: config?.aiProvider || 'gemini',
+                                apiKey: config?.aiApiKey || '', // User must provide key in settings
+                            });
+
+                            if (aiResponse) {
+                                await globalChatService.sendMessage({
+                                    session_id: currentSession.id,
+                                    content: aiResponse,
+                                    sender_type: 'agent', // AI acts as an agent
+                                    sender_name: config?.team_name || 'TalkChat Bot'
+                                });
+                            }
+                        } catch (aiErr) {
+                            console.error('[Widget] AI Response failed:', aiErr);
+                        }
+                    }, 1000);
+                }
             }
         } catch (error) {
             console.error('Error sending message:', error);

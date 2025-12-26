@@ -248,19 +248,41 @@ class WidgetConfigService {
      */
     async createDefaultConfig(tenantId: string | null): Promise<{ config: WidgetConfig | null; error: any }> {
         try {
+            const isGlobal = !tenantId;
+            const defaultConfig = {
+                config_key: tenantId ? `tenant_${tenantId}` : 'global_widget',
+                tenant_id: tenantId,
+                ai_enabled: isGlobal, // Enable AI by default for global admin
+                ai_provider: 'gemini',
+                ai_model: 'gemini-1.5-flash',
+                ai_temperature: 0.7,
+                ai_auto_respond: isGlobal,
+                ai_greeting: isGlobal,
+                ai_knowledge_base: isGlobal ?
+                    `You are the official TalkChat Studio assistant. TalkChat is a premium omnichannel customer support platform.
+Features: 
+- Multi-channel support (Web, WhatsApp, Facebook, Instagram)
+- AI-powered responses with bot-to-human handover
+- Real-time visitor tracking and analytics
+- Dedicated team mailboxes
+- Easy widget embedding
+
+Pricing: 
+- Free: 5 agents, basic features
+- Pro: $49/mo, unlimited agents, AI assistant
+- Enterprise: Contact us for custom pricing
+
+Goal: Be helpful, answer questions about TalkChat. 
+IMPORTANT: Your goal is to generate leads. If a user seems interested, kindly ask for their official email and phone number if they haven't provided it yet. Say you'll have a human specialist reach out to them.` : '',
+                faqs: isGlobal ? [
+                    { question: 'What is TalkChat?', answer: 'TalkChat is an omnichannel customer support platform that integrates Web Chat, WhatsApp, and Social Media into one inbox.', category: 'General' },
+                    { question: 'How much does it cost?', answer: 'We offer a Free plan and a Pro plan at $49/month.', category: 'Pricing' }
+                ] : []
+            };
+
             const { data, error } = await supabase
                 .from('global_widget_config')
-                .insert({
-                    config_key: tenantId ? `tenant_${tenantId}` : 'global_widget',
-                    tenant_id: tenantId,
-                    ai_enabled: false,
-                    ai_provider: 'gemini',
-                    ai_model: 'gemini-1.5-flash',
-                    ai_temperature: 0.7,
-                    ai_knowledge_base: '',
-                    faqs: []
-                    // All other fields will use their default values from the schema
-                })
+                .insert(defaultConfig)
                 .select()
                 .single();
 
