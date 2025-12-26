@@ -25,7 +25,12 @@ import {
     HelpCircle,
     Trash2,
     Plus,
-    Lock
+    Lock,
+    Gift,
+    Ghost,
+    Rabbit,
+    Sun,
+    TreePine
 } from 'lucide-react';
 import { useWidgetConfig } from '../../hooks/useWidgetConfig';
 import { TenantWidgetPreview } from '../../components/TenantWidgetPreview';
@@ -263,6 +268,38 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
                                     </div>
                                 </div>
                             </div>
+
+                            {/* SEASONAL THEMES - Global Admin Only */}
+                            {forceGlobal && (
+                                <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+                                    <div className="flex items-center gap-2">
+                                        <TreePine className="w-5 h-5 text-green-400" />
+                                        <h4 className="font-semibold text-white">Seasonal Decorations</h4>
+                                    </div>
+                                    <p className="text-sm text-slate-400">Add some holiday spirit to the TalkChat landing page widget!</p>
+
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        {[
+                                            { id: 'none', label: 'None', icon: MessageSquare, color: 'text-slate-400' },
+                                            { id: 'christmas', label: 'Christmas', icon: Gift, color: 'text-red-500' },
+                                            { id: 'halloween', label: 'Halloween', icon: Ghost, color: 'text-orange-500' },
+                                            { id: 'easter', label: 'Easter', icon: Rabbit, color: 'text-pink-400' },
+                                        ].map((theme) => (
+                                            <button
+                                                key={theme.id}
+                                                onClick={() => setWidgetConfig({ ...widgetConfig, seasonalTheme: theme.id })}
+                                                className={`flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${(widgetConfig.seasonalTheme || 'none') === theme.id
+                                                        ? 'bg-blue-600/10 border-blue-600'
+                                                        : 'bg-slate-900/50 border-slate-700 hover:border-slate-500'
+                                                    }`}
+                                            >
+                                                <theme.icon className={`w-8 h-8 ${theme.color}`} />
+                                                <span className="text-sm font-medium text-white">{theme.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Branding */}
                             <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">

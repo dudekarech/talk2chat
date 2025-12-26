@@ -38,8 +38,9 @@ export interface WidgetConfig {
     // Pre-Chat Form
     require_name: boolean;
     require_email: boolean;
-    require_phone: boolean;
+    custom_css: string;
     custom_fields: any[];
+    seasonal_theme: string;
 
     // AI Features
     ai_enabled: boolean;
@@ -277,7 +278,8 @@ IMPORTANT: Your goal is to generate leads. If a user seems interested, kindly as
                 faqs: isGlobal ? [
                     { question: 'What is TalkChat?', answer: 'TalkChat is an omnichannel customer support platform that integrates Web Chat, WhatsApp, and Social Media into one inbox.', category: 'General' },
                     { question: 'How much does it cost?', answer: 'We offer a Free plan and a Pro plan at $49/month.', category: 'Pricing' }
-                ] : []
+                ] : [],
+                seasonal_theme: 'none'
             };
 
             const { data, error } = await supabase

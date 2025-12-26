@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, X, Minimize2, Paperclip, Smile, MessageSquare } from 'lucide-react';
+import { Send, X, Minimize2, Paperclip, Smile, MessageSquare, Gift, Ghost, Rabbit } from 'lucide-react';
 import { globalChatService, ChatMessage as RealtimeChatMessage, ChatSession } from '../services/globalChatRealtimeService';
 import { widgetConfigService, WidgetConfig } from '../services/widgetConfigService';
 import { aiService } from '../services/aiService';
@@ -333,8 +333,25 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
                 <button
                     onClick={() => setIsOpen(true)}
                     style={{ background: `linear-gradient(135deg, ${primaryColor}, ${config?.secondary_color || '#ec4899'})` }}
-                    className="group relative w-16 h-16 rounded-full shadow-2xl hover:shadow-lg transition-all duration-300 hover:scale-110 flex items-center justify-center"
+                    className="group relative w-16 h-16 rounded-full shadow-2xl hover:shadow-lg transition-all duration-300 hover:scale-110 flex items-center justify-center z-10"
                 >
+                    {/* Seasonal Decoration */}
+                    {config?.seasonal_theme === 'christmas' && (
+                        <div className="absolute -top-6 -right-2 animate-bounce">
+                            <Gift className="w-8 h-8 text-white drop-shadow-[0_2px_4px_rgba(239,68,68,0.5)] fill-red-500" />
+                        </div>
+                    )}
+                    {config?.seasonal_theme === 'halloween' && (
+                        <div className="absolute -top-6 -right-2 animate-bounce duration-1000">
+                            <Ghost className="w-8 h-8 text-white drop-shadow-[0_2px_4px_rgba(249,115,22,0.5)] fill-orange-500" />
+                        </div>
+                    )}
+                    {config?.seasonal_theme === 'easter' && (
+                        <div className="absolute -top-6 -right-2 animate-bounce duration-700">
+                            <Rabbit className="w-8 h-8 text-white drop-shadow-[0_2px_4px_rgba(244,114,182,0.5)] fill-pink-400" />
+                        </div>
+                    )}
+
                     <MessageSquare className="w-7 h-7 text-white" />
                     <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-slate-950 animate-pulse"></span>
 
