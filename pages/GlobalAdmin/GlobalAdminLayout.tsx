@@ -11,7 +11,8 @@ import {
     Settings,
     LogOut,
     Search,
-    MessageSquare
+    MessageSquare,
+    LifeBuoy
 } from 'lucide-react';
 
 export const GlobalAdminLayout: React.FC = () => {
@@ -28,6 +29,7 @@ export const GlobalAdminLayout: React.FC = () => {
         { icon: BarChart3, label: 'Analytics', path: '/global/analytics' },
         { icon: ShieldAlert, label: 'Security & Audit', path: '/global/security' },
         { icon: Bell, label: 'Notifications', path: '/global/notifications' },
+        { icon: LifeBuoy, label: 'Tickets', path: '/global/tickets' },
     ];
 
     const handleLogout = () => {
@@ -59,8 +61,8 @@ export const GlobalAdminLayout: React.FC = () => {
                                 key={item.path}
                                 onClick={() => navigate(item.path)}
                                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${isActive
-                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'
-                                        : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'
+                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'
+                                    : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'
                                     }`}
                             >
                                 <item.icon className="w-5 h-5" />

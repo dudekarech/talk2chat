@@ -90,7 +90,7 @@ export const SignupPage: React.FC = () => {
                 throw new Error('Failed to create user');
             }
 
-            // Step 2: Handle profile creation/update
+            // Step 2: Handle tenant and profile creation
             if (inviteId && inviteData) {
                 // Update existing invite profile
                 const { error: updateError } = await supabase
@@ -103,14 +103,28 @@ export const SignupPage: React.FC = () => {
 
                 if (updateError) throw updateError;
             } else {
-                // Create new profile for regular signup
+                // 🚀 CREATE NEW TENANT for regular signup
+                const { data: tenant, error: tenantError } = await supabase
+                    .from('tenants')
+                    .insert({
+                        name: formData.companyName,
+                        owner_id: authData.user.id,
+                        subscription_plan: 'free'
+                    })
+                    .select()
+                    .single();
+
+                if (tenantError) throw tenantError;
+
+                // Create new profile linked to the tenant
                 const { error: profileError } = await supabase
                     .from('user_profiles')
                     .insert({
                         user_id: authData.user.id,
                         email: formData.email,
                         name: formData.name,
-                        role: 'agent',
+                        role: 'admin', // The person who signs up is the Tenant Admin
+                        tenant_id: tenant.id,
                         status: 'active'
                     });
 

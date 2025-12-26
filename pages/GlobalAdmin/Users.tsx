@@ -90,9 +90,9 @@ export const Users: React.FC = () => {
                 if (currentProfile.tenant_id) {
                     query = query.eq('tenant_id', currentProfile.tenant_id);
                 } else {
-                    setUsers([]);
-                    setIsLoading(false);
-                    return;
+                    // Global agents see other global users (or everyone if they are global agents)
+                    // For now, let's allow global agents to see other global users
+                    query = query.is('tenant_id', null);
                 }
             }
 

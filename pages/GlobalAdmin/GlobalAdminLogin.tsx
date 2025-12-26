@@ -1,21 +1,46 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Lock, ArrowRight } from 'lucide-react';
+import { ShieldCheck, Lock, ArrowRight, Loader2 } from 'lucide-react';
+import { supabase } from '../../services/supabaseClient';
 
 export const GlobalAdminLogin: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
 
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (email === 'gilbert@mind-firm.com' && password === 'admin123') {
-            // In a real app, we would set a token here
+        setIsLoading(true);
+        setError('');
+
+        try {
+            const { data, error: authError } = await supabase.auth.signInWithPassword({
+                email,
+                password
+            });
+
+            if (authError) throw authError;
+
+            // Verify if the user has a global admin/super_admin role
+            const { data: profile } = await supabase
+                .from('user_profiles')
+                .select('role')
+                .eq('user_id', data.user.id)
+                .single();
+
+            if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
+                await supabase.auth.signOut();
+                throw new Error('Access restricted to Global Administrators.');
+            }
+
             localStorage.setItem('global_admin_token', 'valid');
             navigate('/global/dashboard');
-        } else {
-            setError('Invalid credentials. Access restricted to Global Administrators.');
+        } catch (err: any) {
+            setError(err.message || 'Invalid credentials');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -76,10 +101,17 @@ export const GlobalAdminLogin: React.FC = () => {
 
                         <button
                             type="submit"
-                            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold py-3.5 rounded-lg shadow-lg shadow-blue-600/20 hover:shadow-blue-600/30 transition-all duration-300 flex items-center justify-center group"
+                            disabled={isLoading}
+                            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold py-3.5 rounded-lg shadow-lg shadow-blue-600/20 hover:shadow-blue-600/30 transition-all duration-300 flex items-center justify-center group disabled:opacity-50"
                         >
-                            Access Dashboard
-                            <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                            {isLoading ? (
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                            ) : (
+                                <>
+                                    Access Dashboard
+                                    <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                                </>
+                            )}
                         </button>
                     </form>
 

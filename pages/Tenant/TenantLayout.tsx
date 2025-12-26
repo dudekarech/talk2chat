@@ -10,9 +10,11 @@ import {
     LogOut,
     Search,
     Bell,
-    Menu
+    Menu,
+    LifeBuoy
 } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
+import { NotificationDropdown } from '../../components/NotificationDropdown';
 
 interface TenantProfile {
     name: string;
@@ -40,12 +42,24 @@ export const TenantLayout: React.FC = () => {
 
         const { data } = await supabase
             .from('user_profiles')
-            .select('name, email, role, company')
+            .select(`
+                name, 
+                email, 
+                role,
+                tenants (
+                    name
+                )
+            `)
             .eq('user_id', user.id)
             .single();
 
         if (data) {
-            setProfile(data as TenantProfile);
+            setProfile({
+                name: data.name,
+                email: data.email,
+                role: data.role,
+                company: (data as any).tenants?.name || 'Tenant Admin'
+            });
         }
     };
 
@@ -60,6 +74,8 @@ export const TenantLayout: React.FC = () => {
         { icon: Users, label: 'Team Members', path: '/tenant/team' },
         { icon: Settings, label: 'Widget Config', path: '/tenant/widget' },
         { icon: BarChart3, label: 'Analytics', path: '/tenant/analytics' },
+        { icon: LifeBuoy, label: 'Support', path: '/tenant/support' },
+        { icon: Bell, label: 'Notifications', path: '/tenant/notifications' },
         { icon: Settings, label: 'Settings', path: '/tenant/settings' },
     ];
 
@@ -139,10 +155,7 @@ export const TenantLayout: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <button className="relative p-2 text-slate-400 hover:text-white transition-colors">
-                            <Bell className="w-5 h-5" />
-                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-800"></span>
-                        </button>
+                        <NotificationDropdown />
                         <div className="h-8 w-px bg-slate-700"></div>
                         <div className="flex items-center gap-3">
                             <div className="text-right hidden sm:block">

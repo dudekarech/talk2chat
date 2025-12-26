@@ -13,6 +13,7 @@ import { Users } from './pages/GlobalAdmin/Users';
 import { Analytics } from './pages/GlobalAdmin/Analytics';
 import { Security } from './pages/GlobalAdmin/Security';
 import { Notifications } from './pages/GlobalAdmin/Notifications';
+import { TicketManagement } from './pages/GlobalAdmin/TicketManagement';
 import { ProtectedRoute } from './pages/GlobalAdmin/ProtectedRoute';
 import { GlobalSharedInbox } from './pages/GlobalAdmin/GlobalSharedInbox';
 import { WidgetConfiguration } from './pages/GlobalAdmin/WidgetConfiguration';
@@ -22,6 +23,8 @@ import { TenantsManagement } from './pages/GlobalAdmin/TenantsManagement';
 import { TenantLayout } from './pages/Tenant/TenantLayout';
 import { TenantDashboardHome } from './pages/Tenant/TenantDashboardHome';
 import { TenantWidgetConfiguration } from './pages/Tenant/TenantWidgetConfiguration';
+import { SupportTickets } from './pages/Tenant/SupportTickets';
+import { TenantNotifications } from './pages/Tenant/Notifications';
 import { WidgetEmbedPage } from './pages/WidgetEmbedPage';
 
 const App: React.FC = () => {
@@ -53,6 +56,8 @@ const App: React.FC = () => {
           <Route path="chats" element={<GlobalSharedInbox isGlobalMode={false} />} />
           <Route path="settings" element={<TenantDashboardHome />} /> {/* Placeholder */}
           <Route path="analytics" element={<TenantDashboardHome />} /> {/* Placeholder */}
+          <Route path="support" element={<SupportTickets />} />
+          <Route path="notifications" element={<TenantNotifications />} />
           <Route index element={<Navigate to="dashboard" replace />} />
         </Route>
 
@@ -68,6 +73,7 @@ const App: React.FC = () => {
           <Route path="analytics" element={<Analytics />} />
           <Route path="security" element={<Security />} />
           <Route path="notifications" element={<Notifications />} />
+          <Route path="tickets" element={<TicketManagement />} />
           <Route index element={<Navigate to="dashboard" replace />} />
         </Route>
 

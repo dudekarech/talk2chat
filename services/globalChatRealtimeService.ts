@@ -18,9 +18,9 @@ export interface ChatSession {
     visitor_name: string;
     visitor_email?: string;
     visitor_id: string;
-    status: 'open' | 'pending' | 'resolved' | 'active';
+    status: 'open' | 'pending' | 'resolved' | 'active' | 'waiting' | 'unassigned' | 'escalated';
     channel: 'web' | 'mobile';
-    assigned_to?: string;
+    assigned_agent_id?: string;
     tenant_id?: string | null;
     tags: string[];
     visitor_metadata: {
@@ -29,10 +29,24 @@ export interface ChatSession {
         browser?: string;
         platform?: string;
         currentUrl?: string;
+        scrollDepth?: number;
+        clickCount?: number;
+        leadScore?: number;
+        industry?: string;
+        companySize?: string;
     };
     created_at: string;
     updated_at: string;
     last_activity: string;
+}
+
+export interface ChatNote {
+    id: string;
+    session_id: string;
+    note: string;
+    created_by: string;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface ChatMessage {
@@ -336,7 +350,7 @@ class GlobalChatRealtimeService {
         }
 
         if (filters?.assigned_to) {
-            query = query.eq('assigned_to', filters.assigned_to);
+            query = query.eq('assigned_agent_id', filters.assigned_to);
         }
 
         const { data, error } = await query;
@@ -347,6 +361,57 @@ class GlobalChatRealtimeService {
         }
 
         return { sessions: data as ChatSession[], error: null };
+    }
+
+    /**
+     * Get notes for a session
+     */
+    async getNotes(sessionId: string): Promise<{ notes: ChatNote[]; error: any }> {
+        const { data, error } = await this.supabase
+            .from('chat_notes')
+            .select('*')
+            .eq('session_id', sessionId)
+            .order('created_at', { ascending: false });
+
+        return { notes: data as ChatNote[], error };
+    }
+
+    /**
+     * Add a note to a session
+     */
+    async addNote(sessionId: string, note: string): Promise<{ note: ChatNote | null; error: any }> {
+        const { data: { user } } = await this.supabase.auth.getUser();
+        if (!user) return { note: null, error: 'Not authenticated' };
+
+        const { data, error } = await this.supabase
+            .from('chat_notes')
+            .insert({
+                session_id: sessionId,
+                note,
+                created_by: user.id
+            })
+            .select()
+            .single();
+
+        return { note: data as ChatNote, error };
+    }
+
+    /**
+     * Update visitor metadata (Lead Qualification / Metrics)
+     */
+    async updateVisitorMetadata(sessionId: string, metadata: Partial<ChatSession['visitor_metadata']>) {
+        const { data: session } = await this.supabase
+            .from('global_chat_sessions')
+            .select('visitor_metadata')
+            .eq('id', sessionId)
+            .single();
+
+        const updatedMetadata = {
+            ...(session?.visitor_metadata || {}),
+            ...metadata
+        };
+
+        return this.updateSession(sessionId, { visitor_metadata: updatedMetadata });
     }
 
     /**

@@ -54,27 +54,67 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
         scrollToBottom();
     }, [messages]);
 
+    // Track visitor metrics (scroll depth & clicks)
+    useEffect(() => {
+        if (!currentSession?.id) return;
+
+        let maxScroll = 0;
+        let clickCount = 0;
+        let lastUpdate = Date.now();
+
+        const updateMetrics = () => {
+            const now = Date.now();
+            if (now - lastUpdate < 5000) return; // Throttle to 5s
+
+            globalChatService.updateVisitorMetadata(currentSession.id, {
+                scrollDepth: maxScroll,
+                clickCount: clickCount
+            });
+            lastUpdate = now;
+        };
+
+        const handleScroll = () => {
+            const h = document.documentElement;
+            const b = document.body;
+            const st = h.scrollTop || b.scrollTop;
+            const sh = h.scrollHeight || b.scrollHeight;
+            const ch = h.clientHeight;
+            const scrollPercent = Math.round((st / (sh - ch)) * 100);
+
+            if (scrollPercent > maxScroll) {
+                maxScroll = scrollPercent;
+                updateMetrics();
+            }
+        };
+
+        const handleClick = () => {
+            clickCount++;
+            updateMetrics();
+        };
+
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        window.addEventListener('click', handleClick);
+
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+            window.removeEventListener('click', handleClick);
+        };
+    }, [currentSession?.id]);
+
     // Load configuration
     useEffect(() => {
         const loadConfig = async () => {
-            // CRITICAL: Determine which config to load
             let result;
             if (forceGlobalConfig) {
                 result = await widgetConfigService.getGlobalConfig();
             } else if (publicTenantId !== undefined) {
-                // Use provided publicTenantId (for embeds)
                 result = await widgetConfigService.getConfig(publicTenantId);
             } else {
-                // Normal dashboard behavior (uses logged in user)
                 result = await widgetConfigService.getConfig();
             }
 
             if (result?.config) {
                 setConfig(result.config);
-
-                console.log('[Widget] Loaded config - forceGlobal:', forceGlobalConfig, 'publicTenantId:', publicTenantId, 'teamName:', result.config.team_name);
-
-                // Check if we should auto-open based on config
                 if (result.config.auto_open) {
                     setTimeout(() => {
                         setIsOpen(true);
@@ -105,117 +145,58 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
         const channel = globalChatService.subscribeToSession(
             currentSession.id,
             (realtimeMessage: RealtimeChatMessage) => {
-                // Only add messages from agents (visitor's own messages already added optimistically)
                 if (realtimeMessage.sender_type !== 'visitor') {
                     const newMessage: Message = {
                         id: realtimeMessage.id,
                         content: realtimeMessage.content,
                         sender: realtimeMessage.sender_type,
-                        timestamp: new Date(realtimeMessage.created_at).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                        }),
+                        timestamp: new Date(realtimeMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                         senderName: realtimeMessage.sender_name
                     };
-
-                    setMessages(prev => {
-                        // Avoid duplicates
-                        if (prev.some(m => m.id === newMessage.id)) return prev;
-                        return [...prev, newMessage];
-                    });
+                    setMessages(prev => [...prev, newMessage]);
                 }
+            },
+            (updatedSession) => {
+                setCurrentSession(prev => prev ? { ...prev, ...updatedSession } : null);
             }
         );
 
-        // Check channel status
-        if (channel) {
-            setConnectionStatus('connected');
-        }
+        setConnectionStatus('connected');
 
-        // Cleanup on unmount
         return () => {
             globalChatService.unsubscribe(`session:${currentSession.id}`);
         };
-    }, [currentSession]);
+    }, [currentSession?.id]);
+
+    const loadChatHistory = async (sessionId: string) => {
+        const { messages: history } = await globalChatService.getMessages(sessionId);
+        const formattedHistory = history.map(m => ({
+            id: m.id,
+            content: m.content,
+            sender: m.sender_type,
+            timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            senderName: m.sender_name
+        }));
+        setMessages(formattedHistory);
+    };
 
     const handleStartChat = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!visitorName.trim()) return;
-
         setIsLoading(true);
-        setShowPreChat(false);
 
         try {
-            // CRITICAL: Determine tenant context for session creation
-            let sessionTenantId = null;
-            if (forceGlobalConfig) {
-                sessionTenantId = null;
-            } else if (publicTenantId !== undefined) {
-                sessionTenantId = publicTenantId;
-            } else {
-                sessionTenantId = (config as any)?.tenant_id || null;
-            }
-
-            console.log('[Widget] Creating session with tenant_id:', sessionTenantId, 'forceGlobal:', forceGlobalConfig);
-
-            // Find or create session
             const { session, error } = await globalChatService.findOrCreateSession({
                 visitor_name: visitorName,
-                visitor_email: visitorEmail || undefined,
+                visitor_email: visitorEmail,
                 visitor_id: visitorId.current,
-                visitor_metadata: {
-                    browser: navigator.userAgent,
-                    platform: navigator.platform,
-                    currentUrl: window.location.href
-                },
-                tenant_id: sessionTenantId
+                tenant_id: forceGlobalConfig ? null : (publicTenantId || config?.tenant_id)
             });
 
-            if (error) {
-                console.error('Error creating session:', error);
-                setMessages([{
-                    id: 'error',
-                    content: 'Failed to connect. Please try again.',
-                    sender: 'system',
-                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                }]);
-                setIsLoading(false);
-                return;
-            }
-
-            setCurrentSession(session);
-
-            // Load existing messages if any
             if (session) {
-                const { messages: existingMessages } = await globalChatService.getMessages(session.id);
-
-                const formattedMessages: Message[] = existingMessages.map(msg => ({
-                    id: msg.id,
-                    content: msg.content,
-                    sender: msg.sender_type,
-                    timestamp: new Date(msg.created_at).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    }),
-                    senderName: msg.sender_name
-                }));
-
-                setMessages(formattedMessages);
-
-                // If no messages, send welcome message from config or default
-                if (formattedMessages.length === 0) {
-                    const welcomeMsg = config?.welcome_message || `Hello ${visitorName}! An agent will be with you shortly. How can we help you today?`;
-
-                    await globalChatService.sendMessage({
-                        session_id: session.id,
-                        content: welcomeMsg,
-                        sender_type: 'system',
-                        sender_name: config?.team_name || 'TalkChat Bot'
-                    });
-                }
+                setCurrentSession(session);
+                setShowPreChat(false);
+                loadChatHistory(session.id);
             }
-        } catch (error) {
-            console.error('Error starting chat:', error);
         } finally {
             setIsLoading(false);
         }
@@ -223,318 +204,195 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!messageInput.trim() || !currentSession) return;
+        if (!messageInput.trim() || !currentSession || connectionStatus !== 'connected') return;
 
-        const messageContent = messageInput;
+        const content = messageInput;
         setMessageInput('');
 
-        // Optimistically add message to UI
-        const optimisticMessage: Message = {
-            id: `temp_${Date.now()}`,
-            content: messageContent,
+        // Optimistic update
+        const tempId = Date.now().toString();
+        setMessages(prev => [...prev, {
+            id: tempId,
+            content,
             sender: 'visitor',
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             senderName: visitorName || 'You'
-        };
-        setMessages(prev => [...prev, optimisticMessage]);
+        }]);
 
-        try {
-            // Send to Supabase (will trigger realtime update for admin)
-            const { message, error } = await globalChatService.sendMessage({
-                session_id: currentSession.id,
-                content: messageContent,
-                sender_type: 'visitor',
-                sender_id: visitorId.current,
-                sender_name: visitorName
-            });
+        await globalChatService.sendMessage({
+            session_id: currentSession.id,
+            content,
+            sender_type: 'visitor',
+            sender_name: visitorName || 'Visitor'
+        });
 
-            if (error) {
-                console.error('Error sending message:', error);
-                // Remove optimistic message and show error
-                setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
-                setMessages(prev => [...prev, {
-                    id: 'error',
-                    content: 'Failed to send message. Please try again.',
-                    sender: 'system',
-                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                }]);
-                return;
+        // AI Response Logic
+        if (config?.ai_auto_respond) {
+            const history = messages.map(m => ({
+                role: m.sender === 'visitor' ? 'user' : 'model',
+                content: m.content
+            }));
+
+            history.push({ role: 'user', content });
+
+            const aiResponse = await aiService.generateResponse(
+                content,
+                config.ai_knowledge_base || '',
+                history as any
+            );
+
+            if (aiResponse) {
+                await globalChatService.sendMessage({
+                    session_id: currentSession.id,
+                    content: aiResponse,
+                    sender_type: 'system',
+                    sender_name: config.team_name || 'AI Assistant'
+                });
             }
-
-            // Replace optimistic message with real one
-            if (message) {
-                setMessages(prev => prev.map(m =>
-                    m.id === optimisticMessage.id
-                        ? { ...m, id: message.id }
-                        : m
-                ));
-
-                // AI AUTO-RESPOND LOGIC
-                if (config?.aiEnabled && config?.aiAutoRespond) {
-                    console.log('[Widget] Triggering AI response...');
-
-                    // Show a temporary typing indicator if we were to have one, 
-                    // or just delay slightly for realism
-                    setTimeout(async () => {
-                        try {
-                            // Prepare history for Gemini
-                            const history = messages
-                                .filter(m => m.sender === 'visitor' || m.sender === 'agent' || m.sender === 'system')
-                                .slice(-10) // Last 10 messages
-                                .map(m => ({
-                                    role: m.sender === 'visitor' ? 'user' : 'model',
-                                    parts: [{ text: m.content }]
-                                } as any));
-
-                            const aiResponse = await aiService.getAIResponse({
-                                message: messageContent,
-                                history: history,
-                                instructions: config?.aiKnowledgeBase || 'Follow general helpful assistant guidelines.',
-                                provider: config?.aiProvider || 'gemini',
-                                apiKey: config?.aiApiKey || '', // User must provide key in settings
-                            });
-
-                            if (aiResponse) {
-                                await globalChatService.sendMessage({
-                                    session_id: currentSession.id,
-                                    content: aiResponse,
-                                    sender_type: 'agent', // AI acts as an agent
-                                    sender_name: config?.team_name || 'TalkChat Bot'
-                                });
-                            }
-                        } catch (aiErr) {
-                            console.error('[Widget] AI Response failed:', aiErr);
-                        }
-                    }, 1000);
-                }
-            }
-        } catch (error) {
-            console.error('Error sending message:', error);
-        }
-    };
-
-    // Styles based on config
-    const primaryColor = config?.primary_color || '#8b5cf6'; // Default purple
-    const position = config?.position || 'bottom-right';
-
-    // Position classes
-    const getPositionClasses = () => {
-        switch (position) {
-            case 'bottom-left': return 'bottom-6 left-6';
-            case 'top-right': return 'top-6 right-6';
-            case 'top-left': return 'top-6 left-6';
-            default: return 'bottom-6 right-6';
         }
     };
 
     if (!isOpen) {
         return (
-            <div className={`fixed ${getPositionClasses()} z-50`}>
+            <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-4">
+                {config?.seasonal_theme && config.seasonal_theme !== 'none' && (
+                    <div className="animate-bounce">
+                        {config.seasonal_theme === 'christmas' && <Gift className="w-8 h-8 text-red-500" />}
+                        {config.seasonal_theme === 'halloween' && <Ghost className="w-8 h-8 text-orange-500" />}
+                        {config.seasonal_theme === 'easter' && <Rabbit className="w-8 h-8 text-pink-400" />}
+                    </div>
+                )}
                 <button
                     onClick={() => setIsOpen(true)}
-                    style={{ background: `linear-gradient(135deg, ${primaryColor}, ${config?.secondary_color || '#ec4899'})` }}
-                    className="group relative w-16 h-16 rounded-full shadow-2xl hover:shadow-lg transition-all duration-300 hover:scale-110 flex items-center justify-center z-10"
+                    style={{ backgroundColor: config?.primary_color || '#2563eb' }}
+                    className="w-16 h-16 rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-110 transition-transform duration-300 group relative"
                 >
-                    {/* Seasonal Decoration */}
-                    {config?.seasonal_theme === 'christmas' && (
-                        <div className="absolute -top-6 -right-2 animate-bounce">
-                            <Gift className="w-8 h-8 text-white drop-shadow-[0_2px_4px_rgba(239,68,68,0.5)] fill-red-500" />
-                        </div>
-                    )}
-                    {config?.seasonal_theme === 'halloween' && (
-                        <div className="absolute -top-6 -right-2 animate-bounce duration-1000">
-                            <Ghost className="w-8 h-8 text-white drop-shadow-[0_2px_4px_rgba(249,115,22,0.5)] fill-orange-500" />
-                        </div>
-                    )}
-                    {config?.seasonal_theme === 'easter' && (
-                        <div className="absolute -top-6 -right-2 animate-bounce duration-700">
-                            <Rabbit className="w-8 h-8 text-white drop-shadow-[0_2px_4px_rgba(244,114,182,0.5)] fill-pink-400" />
-                        </div>
-                    )}
-
-                    <MessageSquare className="w-7 h-7 text-white" />
-                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-slate-950 animate-pulse"></span>
-
-                    {/* Pulse animation */}
-                    <span className="absolute inset-0 rounded-full bg-white/20 animate-ping"></span>
+                    <MessageSquare className="w-8 h-8 group-hover:rotate-12 transition-transform" />
                 </button>
             </div>
         );
     }
 
     return (
-        <div className={`fixed ${getPositionClasses()} z-50`}>
-            <div className={`bg-slate-900 rounded-2xl shadow-2xl border border-slate-700 overflow-hidden transition-all duration-300 ${isMinimized ? 'w-80 h-16' : 'w-[400px] h-[600px]'
-                }`}>
-                {/* Header */}
-                <div
-                    className="h-16 px-6 flex items-center justify-between"
-                    style={{ background: `linear-gradient(to right, ${primaryColor}, ${config?.secondary_color || '#ec4899'})` }}
-                >
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-lg flex items-center justify-center">
-                            <MessageSquare className="w-5 h-5 text-white" />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-white text-sm">{config?.team_name || 'TalkChat Support'}</h3>
-                            <div className="flex items-center gap-1.5">
-                                <span className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-400' :
-                                    connectionStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' :
-                                        'bg-red-400'
-                                    }`}></span>
-                                <span className="text-xs text-white/80">
-                                    {connectionStatus === 'connected' ? 'Online' :
-                                        connectionStatus === 'connecting' ? 'Connecting...' :
-                                            'Offline'}
-                                </span>
-                            </div>
-                        </div>
+        <div
+            className={`fixed bottom-6 right-6 z-[9999] bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl flex flex-col transition-all duration-300 ${isMinimized ? 'h-[72px] w-72' : 'h-[600px] w-[400px]'
+                }`}
+        >
+            <div
+                className="p-4 rounded-t-2xl flex items-center justify-between cursor-pointer border-b border-slate-700/50"
+                style={{ backgroundColor: config?.primary_color || '#2563eb' }}
+                onClick={() => isMinimized && setIsMinimized(false)}
+            >
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                        <MessageSquare className="w-5 h-5 text-white" />
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setIsMinimized(!isMinimized)}
-                            className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
-                        >
-                            <Minimize2 className="w-4 h-4 text-white" />
-                        </button>
-                        <button
-                            onClick={() => setIsOpen(false)}
-                            className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
-                        >
-                            <X className="w-4 h-4 text-white" />
-                        </button>
+                    <div>
+                        <h3 className="font-bold text-white text-sm">{config?.team_name || 'Support'}</h3>
+                        <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]"></span>
+                            <span className="text-[10px] text-white/80 font-medium">We're Online</span>
+                        </div>
                     </div>
                 </div>
+                <div className="flex items-center gap-1">
+                    <button onClick={(e) => { e.stopPropagation(); setIsMinimized(!isMinimized); }} className="p-2 hover:bg-white/10 rounded-lg text-white/80 transition-colors">
+                        <Minimize2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} className="p-2 hover:bg-white/10 rounded-lg text-white/80 transition-colors">
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
 
-                {!isMinimized && (
-                    <>
-                        {showPreChat ? (
-                            <div className="h-[484px] p-6 flex flex-col justify-center bg-slate-900">
-                                <div className="text-center mb-6">
-                                    <h3 className="text-xl font-bold text-white mb-2">{config?.pre_chat_message || 'Start a Conversation'}</h3>
-                                    <p className="text-sm text-slate-400">We typically respond within a few minutes</p>
-                                </div>
-                                <form onSubmit={handleStartChat} className="space-y-4">
-                                    {config?.require_name !== false && (
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-300 mb-2">Your Name *</label>
-                                            <input
-                                                type="text"
-                                                value={visitorName}
-                                                onChange={(e) => setVisitorName(e.target.value)}
-                                                placeholder="John Doe"
-                                                required
-                                                disabled={isLoading}
-                                                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-purple disabled:opacity-50"
-                                            />
+            {!isMinimized && (
+                <>
+                    {showPreChat ? (
+                        <div className="flex-1 p-8 flex flex-col">
+                            <div className="mb-8 text-center">
+                                <h4 className="text-xl font-bold text-white mb-2">Welcome! 👋</h4>
+                                <p className="text-slate-400 text-sm">{config?.welcome_message || 'How can we help you today?'}</p>
+                            </div>
+                            <form onSubmit={handleStartChat} className="space-y-4">
+                                {config?.require_name && (
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Name</label>
+                                        <input
+                                            required
+                                            type="text"
+                                            value={visitorName}
+                                            onChange={(e) => setVisitorName(e.target.value)}
+                                            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                            placeholder="John Doe"
+                                        />
+                                    </div>
+                                )}
+                                {config?.require_email && (
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email</label>
+                                        <input
+                                            required
+                                            type="email"
+                                            value={visitorEmail}
+                                            onChange={(e) => setVisitorEmail(e.target.value)}
+                                            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                            placeholder="john@example.com"
+                                        />
+                                    </div>
+                                )}
+                                <button
+                                    type="submit"
+                                    disabled={isLoading}
+                                    style={{ backgroundColor: config?.primary_color || '#2563eb' }}
+                                    className="w-full text-white font-bold py-4 rounded-xl shadow-lg hover:opacity-90 transition-all disabled:opacity-50 mt-4"
+                                >
+                                    {isLoading ? 'Starting...' : 'Start Conversation'}
+                                </button>
+                            </form>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-slate-900/50">
+                                {messages.map((msg, i) => (
+                                    <div key={i} className={`flex ${msg.sender === 'visitor' ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${msg.sender === 'visitor'
+                                                ? 'bg-blue-600 text-white rounded-tr-sm'
+                                                : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700/50'
+                                            }`}>
+                                            <p className="text-sm leading-relaxed">{msg.content}</p>
+                                            <span className="text-[10px] opacity-50 mt-1 block">{msg.timestamp}</span>
                                         </div>
-                                    )}
-                                    {config?.require_email && (
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-300 mb-2">Email *</label>
-                                            <input
-                                                type="email"
-                                                value={visitorEmail}
-                                                onChange={(e) => setVisitorEmail(e.target.value)}
-                                                placeholder="john@example.com"
-                                                required
-                                                disabled={isLoading}
-                                                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-purple disabled:opacity-50"
-                                            />
-                                        </div>
-                                    )}
+                                    </div>
+                                ))}
+                                <div ref={messagesEndRef} />
+                            </div>
+
+                            <div className="p-4 bg-slate-800/50 border-t border-slate-700/50">
+                                <form onSubmit={handleSendMessage} className="relative">
+                                    <input
+                                        type="text"
+                                        value={messageInput}
+                                        onChange={(e) => setMessageInput(e.target.value)}
+                                        placeholder="Type your message..."
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-4 pr-12 py-3 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                    />
                                     <button
                                         type="submit"
-                                        disabled={isLoading}
-                                        style={{ background: `linear-gradient(to right, ${primaryColor}, ${config?.secondary_color || '#ec4899'})` }}
-                                        className="w-full text-white font-semibold py-3 rounded-lg hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        disabled={!messageInput.trim() || connectionStatus !== 'connected'}
+                                        style={{ color: config?.primary_color || '#2563eb' }}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
                                     >
-                                        {isLoading ? 'Connecting...' : 'Start Chat'}
+                                        <Send className="w-5 h-5" />
                                     </button>
                                 </form>
-                                <p className="text-xs text-slate-500 text-center mt-4">
-                                    By using this chat, you agree to our Privacy Policy
+                                <p className="text-[9px] text-slate-500 text-center mt-3 uppercase tracking-widest font-bold">
+                                    Powered by TalkChat Studio
                                 </p>
                             </div>
-                        ) : (
-                            <>
-                                {/* Messages Area */}
-                                <div className="h-[424px] p-4 overflow-y-auto bg-slate-950/50 space-y-4">
-                                    {messages.map((msg) => (
-                                        <div key={msg.id} className={`flex ${msg.sender === 'visitor' ? 'justify-end' : 'justify-start'}`}>
-                                            <div className={`max-w-[85%] ${msg.sender === 'system' ? 'w-full flex justify-center' : ''}`}>
-                                                {msg.sender === 'system' ? (
-                                                    <span className="text-xs text-slate-500 bg-slate-800/50 px-3 py-1 rounded-full">
-                                                        {msg.content}
-                                                    </span>
-                                                ) : (
-                                                    <div>
-                                                        {msg.senderName && msg.sender === 'agent' && (
-                                                            <p className="text-xs text-slate-400 mb-1 ml-3">{msg.senderName}</p>
-                                                        )}
-                                                        <div
-                                                            className={`rounded-2xl px-4 py-3 ${msg.sender === 'visitor'
-                                                                ? 'text-white rounded-tr-sm'
-                                                                : 'bg-slate-800 text-slate-200 rounded-tl-sm'
-                                                                }`}
-                                                            style={msg.sender === 'visitor' ? { background: `linear-gradient(to right, ${primaryColor}, ${config?.secondary_color || '#ec4899'})` } : {}}
-                                                        >
-                                                            <p className="text-sm">{msg.content}</p>
-                                                            <p className={`text-[10px] mt-1 ${msg.sender === 'visitor' ? 'text-white/70' : 'text-slate-500'}`}>
-                                                                {msg.timestamp}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                    <div ref={messagesEndRef} />
-                                </div>
-
-                                {/* Input Area */}
-                                <div className="h-[60px] px-4 py-3 bg-slate-900 border-t border-slate-700">
-                                    <form onSubmit={handleSendMessage} className="relative">
-                                        <input
-                                            type="text"
-                                            value={messageInput}
-                                            onChange={(e) => setMessageInput(e.target.value)}
-                                            placeholder="Type your message..."
-                                            disabled={connectionStatus !== 'connected'}
-                                            className="w-full bg-slate-800 border border-slate-700 rounded-full pl-4 pr-24 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-purple disabled:opacity-50"
-                                        />
-                                        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                                            <button type="button" className="p-1.5 text-slate-400 hover:text-white transition-colors">
-                                                <Paperclip className="w-4 h-4" />
-                                            </button>
-                                            <button type="button" className="p-1.5 text-slate-400 hover:text-white transition-colors">
-                                                <Smile className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                type="submit"
-                                                disabled={!messageInput.trim() || connectionStatus !== 'connected'}
-                                                style={{ background: `linear-gradient(to right, ${primaryColor}, ${config?.secondary_color || '#ec4899'})` }}
-                                                className="p-1.5 text-white rounded-full hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                                            >
-                                                <Send className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </>
-                        )}
-                    </>
-                )}
-
-                {/* Powered by */}
-                {!isMinimized && config?.show_powered_by !== false && (
-                    <div className="h-10 bg-slate-900/50 border-t border-slate-800 flex items-center justify-center">
-                        <p className="text-[10px] text-slate-500">
-                            Powered by <span className="text-brand-purple font-semibold">TalkChat Studio</span>
-                        </p>
-                    </div>
-                )}
-            </div>
+                        </>
+                    )}
+                </>
+            )}
         </div>
     );
 };
