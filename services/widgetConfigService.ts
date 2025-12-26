@@ -51,11 +51,14 @@ export interface WidgetConfig {
     ai_smart_suggestions: boolean;
     ai_sentiment_analysis: boolean;
     ai_language_detection: boolean;
+    ai_api_key?: string;
+    ai_knowledge_base?: string;
 
     // Quick Replies & Canned Responses
-    quick_replies_enabled: boolean;
-    quick_replies: Array<{ id: string; text: string; category: string }>;
+    enable_canned_responses: boolean;
     canned_responses: Array<{ id: string; shortcut: string; text: string; category: string }>;
+    quick_replies: Array<{ id: string; text: string; category: string }>;
+    faqs: Array<{ question: string; answer: string; category: string }>;
 
     // Visitor Tracking
     track_visitors: boolean;
@@ -249,7 +252,13 @@ class WidgetConfigService {
                 .from('global_widget_config')
                 .insert({
                     config_key: tenantId ? `tenant_${tenantId}` : 'global_widget',
-                    tenant_id: tenantId
+                    tenant_id: tenantId,
+                    ai_enabled: false,
+                    ai_provider: 'gemini',
+                    ai_model: 'gemini-1.5-flash',
+                    ai_temperature: 0.7,
+                    ai_knowledge_base: '',
+                    faqs: []
                     // All other fields will use their default values from the schema
                 })
                 .select()

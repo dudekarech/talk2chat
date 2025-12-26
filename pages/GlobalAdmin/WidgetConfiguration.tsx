@@ -19,7 +19,13 @@ import {
     Users,
     Loader2,
     Check,
-    AlertCircle
+    AlertCircle,
+    Key,
+    BookOpen,
+    HelpCircle,
+    Trash2,
+    Plus,
+    Lock
 } from 'lucide-react';
 import { useWidgetConfig } from '../../hooks/useWidgetConfig';
 import { TenantWidgetPreview } from '../../components/TenantWidgetPreview';
@@ -683,7 +689,124 @@ export const WidgetConfiguration: React.FC = () => {
                                         </div>
 
                                         <div className="border-t border-slate-700 pt-6">
-                                            <h4 className="font-semibold text-white mb-4">AI Features</h4>
+                                            <div className="flex items-center gap-2 mb-4">
+                                                <Key className="w-5 h-5 text-blue-400" />
+                                                <h4 className="font-semibold text-white">API Configuration</h4>
+                                            </div>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                                                        {widgetConfig.aiProvider === 'gemini' ? 'Google Gemini API Key' :
+                                                            widgetConfig.aiProvider === 'openai' ? 'OpenAI Secret Key' : 'AI Provider API Key'}
+                                                    </label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type="password"
+                                                            value={widgetConfig.aiApiKey || ''}
+                                                            onChange={(e) => setWidgetConfig({ ...widgetConfig, aiApiKey: e.target.value })}
+                                                            placeholder="Enter your API key..."
+                                                            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg pl-10 pr-3 py-2 text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                                                        />
+                                                        <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                                                    </div>
+                                                    <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
+                                                        <Shield className="w-3 h-3" />
+                                                        Keys are stored securely and used only for your bot's queries.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="border-t border-slate-700 pt-6">
+                                            <div className="flex items-center gap-2 mb-4">
+                                                <BookOpen className="w-5 h-5 text-purple-400" />
+                                                <h4 className="font-semibold text-white">Bot Knowledge Base</h4>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-300 mb-2">
+                                                    Training Instructions & Context
+                                                </label>
+                                                <textarea
+                                                    value={widgetConfig.aiKnowledgeBase || ''}
+                                                    onChange={(e) => setWidgetConfig({ ...widgetConfig, aiKnowledgeBase: e.target.value })}
+                                                    placeholder="Example: You are a helpful support agent for 'MySaaS'. You specialize in billing and technical setup. Always be polite..."
+                                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm h-48 resize-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition-all"
+                                                />
+                                                <p className="text-xs text-slate-500 mt-2">
+                                                    Provide detailed information about your business, products, and how the bot should behave. The better the instructions, the smarter the bot.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="border-t border-slate-700 pt-6">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div className="flex items-center gap-2">
+                                                    <HelpCircle className="w-5 h-5 text-orange-400" />
+                                                    <h4 className="font-semibold text-white">Quick Responses / FAQ</h4>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        const newFaqs = [...(widgetConfig.faqs || []), { question: '', answer: '', category: 'General' }];
+                                                        setWidgetConfig({ ...widgetConfig, faqs: newFaqs });
+                                                    }}
+                                                    className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+                                                >
+                                                    <Plus className="w-3 h-3" />
+                                                    Add FAQ
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                {(!widgetConfig.faqs || widgetConfig.faqs.length === 0) ? (
+                                                    <div className="text-center py-6 border-2 border-dashed border-slate-700 rounded-xl">
+                                                        <HelpCircle className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                                                        <p className="text-sm text-slate-500">No FAQs added yet.</p>
+                                                    </div>
+                                                ) : (
+                                                    widgetConfig.faqs.map((faq: any, index: number) => (
+                                                        <div key={index} className="bg-slate-900/30 border border-slate-700 rounded-xl p-4 space-y-3 relative group">
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newFaqs = widgetConfig.faqs.filter((_: any, i: number) => i !== index);
+                                                                    setWidgetConfig({ ...widgetConfig, faqs: newFaqs });
+                                                                }}
+                                                                className="absolute top-4 right-4 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                            <div>
+                                                                <input
+                                                                    type="text"
+                                                                    value={faq.question}
+                                                                    onChange={(e) => {
+                                                                        const newFaqs = [...widgetConfig.faqs];
+                                                                        newFaqs[index].question = e.target.value;
+                                                                        setWidgetConfig({ ...widgetConfig, faqs: newFaqs });
+                                                                    }}
+                                                                    placeholder="Question (e.g. What are your pricing plans?)"
+                                                                    className="w-full bg-transparent border-none p-0 text-white font-medium placeholder:text-slate-600 focus:ring-0 text-sm"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <textarea
+                                                                    value={faq.answer}
+                                                                    onChange={(e) => {
+                                                                        const newFaqs = [...widgetConfig.faqs];
+                                                                        newFaqs[index].answer = e.target.value;
+                                                                        setWidgetConfig({ ...widgetConfig, faqs: newFaqs });
+                                                                    }}
+                                                                    placeholder="Answer (The bot will use this to respond)"
+                                                                    className="w-full bg-transparent border-none p-0 text-slate-400 placeholder:text-slate-600 focus:ring-0 text-xs resize-none h-16"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="border-t border-slate-700 pt-6">
+                                            <h4 className="font-semibold text-white mb-4">Automation Features</h4>
                                             <div className="space-y-4">
                                                 {[
                                                     { key: 'aiAutoRespond', label: 'Auto-Respond to Questions', desc: 'AI automatically answers FAQs' },
