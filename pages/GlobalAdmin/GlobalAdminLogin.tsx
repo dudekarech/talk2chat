@@ -23,14 +23,14 @@ export const GlobalAdminLogin: React.FC = () => {
 
             if (authError) throw authError;
 
-            // Verify if the user has a global admin/super_admin role
+            // Verify if the user has a global admin/super_admin role AND NO tenant_id
             const { data: profile } = await supabase
                 .from('user_profiles')
-                .select('role')
+                .select('role, tenant_id')
                 .eq('user_id', data.user.id)
                 .single();
 
-            if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
+            if (!profile || !['super_admin', 'admin'].includes(profile.role) || profile.tenant_id !== null) {
                 await supabase.auth.signOut();
                 throw new Error('Access restricted to Global Administrators.');
             }

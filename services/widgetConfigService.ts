@@ -53,6 +53,11 @@ export interface WidgetConfig {
     ai_sentiment_analysis: boolean;
     ai_language_detection: boolean;
     ai_api_key?: string;
+    openai_api_key?: string;
+    anthropic_api_key?: string;
+    mistral_api_key?: string;
+    deepseek_api_key?: string;
+    openrouter_api_key?: string;
     ai_knowledge_base?: string;
 
     // Quick Replies & Canned Responses

@@ -85,15 +85,22 @@ export const Users: React.FC = () => {
                 .neq('status', 'deleted')
                 .order('created_at', { ascending: false });
 
-            // If not global admin, filter by tenant
-            if (currentProfile && !['super_admin', 'admin'].includes(currentProfile.role)) {
-                if (currentProfile.tenant_id) {
-                    query = query.eq('tenant_id', currentProfile.tenant_id);
-                } else {
-                    // Global agents see other global users (or everyone if they are global agents)
-                    // For now, let's allow global agents to see other global users
-                    query = query.is('tenant_id', null);
-                }
+            // ROLE-BASED VISIBILITY RULES:
+            // 1. Super Admin (tenant_id null, role super_admin) -> Sees EVERYTHING.
+            // 2. Global Admin (tenant_id null, role admin) -> Sees everything.
+            // 3. Tenant Admin -> Only sees users THEY CREATED (invited_by = auth.uid()).
+            // 4. Others -> Only see their own profile (handled by RLS/context).
+
+            if (currentProfile?.role === 'super_admin' || (currentProfile?.role === 'admin' && !currentProfile?.tenant_id)) {
+                // Super/Global Admin: No additional filter (sees all non-deleted)
+                console.log('Super Admin detected: Loading all users');
+            } else if (currentProfile?.role === 'tenant_admin') {
+                // Tenant Admin: Only see users THEY created
+                console.log('Tenant Admin detected: Loading only self-invited users');
+                query = query.eq('invited_by', currentUser.id);
+            } else {
+                // Others: Just themselves
+                query = query.eq('user_id', currentUser.id);
             }
 
             const { data: profiles, error } = await query;
@@ -144,7 +151,8 @@ export const Users: React.FC = () => {
                     phone: formData.phone,
                     department: formData.department,
                     status: 'pending',
-                    tenant_id: currentProfile?.tenant_id // Assign to current tenant
+                    tenant_id: currentProfile?.tenant_id, // Assign to current tenant
+                    invited_by: currentUser?.id // Track who invited them
                 })
                 .select()
                 .single();
@@ -435,6 +443,7 @@ export const Users: React.FC = () => {
                                             <td className="px-6 py-4">
                                                 <select
                                                     value={user.role}
+                                                    disabled={user.role === 'super_admin'}
                                                     onChange={(e) => handleChangeRole(user.id, e.target.value)}
                                                     className={`px-3 py-1 rounded-full text-xs font-medium border-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${getRoleBadgeColor(user.role)}`}
                                                 >
@@ -442,7 +451,6 @@ export const Users: React.FC = () => {
                                                     <option value="manager" className="bg-slate-800 text-slate-300">Manager</option>
                                                     <option value="tenant_admin" className="bg-slate-800 text-slate-300">Tenant Admin</option>
                                                     <option value="admin" className="bg-slate-800 text-slate-300">Admin</option>
-                                                    <option value="super_admin" className="bg-slate-800 text-slate-300">Super Admin</option>
                                                 </select>
                                             </td>
                                             <td className="px-6 py-4 text-slate-300">{user.department || '-'}</td>
@@ -581,7 +589,8 @@ export const Users: React.FC = () => {
                                         <option value="manager">Manager</option>
                                         <option value="tenant_admin">Tenant Admin</option>
                                         <option value="admin">Admin</option>
-                                        <option value="super_admin">Super Admin</option>
+                                        {/* Only show Super Admin option in code if needed, but we prevent non-super admins from selecting it via logic if we wanted, for now let's just comment it out as requested */}
+                                        {/* <option value="super_admin">Super Admin</option> */}
                                     </select>
                                 </div>
 
@@ -678,7 +687,6 @@ export const Users: React.FC = () => {
                                     <option value="manager">Manager</option>
                                     <option value="tenant_admin">Tenant Admin</option>
                                     <option value="admin">Admin</option>
-                                    <option value="super_admin">Super Admin</option>
                                 </select>
                             </div>
 

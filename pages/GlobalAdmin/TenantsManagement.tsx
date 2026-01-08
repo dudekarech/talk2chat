@@ -33,6 +33,24 @@ export const TenantsManagement: React.FC = () => {
 
     const loadTenants = async () => {
         try {
+            // Check if current user is super admin
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            const { data: profile } = await supabase
+                .from('user_profiles')
+                .select('role, tenant_id')
+                .eq('user_id', user.id)
+                .single();
+
+            // ONLY Super Admins can pull all data from the database
+            if (profile?.role !== 'super_admin' || profile?.tenant_id !== null) {
+                console.warn('Unauthorized access to all tenants. Access restricted to super_admin.');
+                setTenants([]);
+                setIsLoading(false);
+                return;
+            }
+
             const { data, error } = await supabase
                 .from('tenants')
                 .select('*')

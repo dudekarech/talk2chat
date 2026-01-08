@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, X, Minimize2, Paperclip, Smile, MessageSquare, Gift, Ghost, Rabbit } from 'lucide-react';
+import { Send, X, Minimize2, Paperclip, Smile, MessageSquare, Gift, Ghost, Rabbit, RotateCcw } from 'lucide-react';
 import { globalChatService, ChatMessage as RealtimeChatMessage, ChatSession } from '../services/globalChatRealtimeService';
 import { widgetConfigService, WidgetConfig } from '../services/widgetConfigService';
 import { aiService } from '../services/aiService';
@@ -8,7 +8,7 @@ import { VisitorInfoPanel } from './VisitorInfoPanel';
 interface Message {
     id: string;
     content: string;
-    sender: 'visitor' | 'agent' | 'system';
+    sender: 'visitor' | 'agent' | 'system' | 'ai';
     timestamp: string;
     senderName?: string;
 }
@@ -157,7 +157,14 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
                 }
             },
             (updatedSession) => {
-                setCurrentSession(prev => prev ? { ...prev, ...updatedSession } : null);
+                if (updatedSession.status === 'resolved' || updatedSession.status === 'expired') {
+                    console.log('[Realtime] Session concluded. Resetting UI.');
+                    setCurrentSession(null);
+                    setShowPreChat(true);
+                    setMessages([]);
+                } else {
+                    setCurrentSession(prev => prev ? { ...prev, ...updatedSession } : null);
+                }
             }
         );
 
@@ -167,6 +174,22 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
             globalChatService.unsubscribe(`session:${currentSession.id}`);
         };
     }, [currentSession?.id]);
+
+    const handleEndChat = async () => {
+        if (!currentSession?.id) return;
+
+        if (window.confirm('Are you sure you want to end this conversation?')) {
+            setIsLoading(true);
+            try {
+                await globalChatService.endSession(currentSession.id);
+                setCurrentSession(null);
+                setShowPreChat(true);
+                setMessages([]);
+            } finally {
+                setIsLoading(false);
+            }
+        }
+    };
 
     const loadChatHistory = async (sessionId: string) => {
         const { messages: history } = await globalChatService.getMessages(sessionId);
@@ -226,8 +249,18 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
             sender_name: visitorName || 'Visitor'
         });
 
-        // AI Response Logic
-        if (config?.ai_auto_respond) {
+        // AI Response Logic - Only respond if:
+        // 1. AI is enabled
+        // 2. No agent is assigned yet (AI takes over until human)
+        // 3. User is not an agent
+        const isAgentAssigned = !!currentSession.assigned_to;
+
+        if (config?.ai_auto_respond && !isAgentAssigned) {
+            console.log('[Widget] ========== AI AUTO-RESPONSE ==========');
+            console.log('[Widget] Session ID:', currentSession.id);
+            console.log('[Widget] AI Provider:', config.ai_provider);
+            console.log('[Widget] AI Model:', config.ai_model);
+
             const history = messages.map(m => ({
                 role: m.sender === 'visitor' ? 'user' : 'model',
                 content: m.content
@@ -235,20 +268,57 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
 
             history.push({ role: 'user', content });
 
-            const aiResponse = await aiService.generateResponse(
-                content,
-                config.ai_knowledge_base || '',
-                history as any
-            );
+            try {
+                const selectedApiKey =
+                    config.ai_provider === 'openai' ? (config.openai_api_key || '') :
+                        config.ai_provider === 'anthropic' ? (config.anthropic_api_key || '') :
+                            config.ai_provider === 'mistral' ? (config.mistral_api_key || '') :
+                                config.ai_provider === 'deepseek' ? (config.deepseek_api_key || '') :
+                                    config.ai_provider === 'openrouter' ? (config.openrouter_api_key || '') :
+                                        (config.ai_api_key || '');
 
-            if (aiResponse) {
-                await globalChatService.sendMessage({
-                    session_id: currentSession.id,
-                    content: aiResponse,
-                    sender_type: 'system',
-                    sender_name: config.team_name || 'AI Assistant'
+                console.log('[Widget] API Key selected for provider:', config.ai_provider, 'Present:', !!selectedApiKey);
+
+                const aiResponse = await aiService.getAIResponse({
+                    message: content,
+                    history: history.map(h => ({ role: h.role, parts: h.content })),
+                    instructions: config.ai_knowledge_base || 'You are a helpful customer support assistant.',
+                    provider: config.ai_provider || 'gemini',
+                    modelName: config.ai_model,
+                    apiKey: selectedApiKey
                 });
+
+                console.log('[Widget] AI Response received:', aiResponse?.substring(0, 100));
+
+                // Validate and send AI response
+                if (aiResponse && aiResponse.trim() !== '' && !aiResponse.includes("API Key is missing")) {
+                    console.log('[Widget] ✅ Sending AI response to database');
+                    await globalChatService.sendMessage({
+                        session_id: currentSession.id,
+                        content: aiResponse,
+                        sender_type: 'ai',
+                        sender_name: config.team_name || 'AI Assistant'
+                    });
+                } else if (!aiResponse || aiResponse.trim() === '') {
+                    console.error('[Widget] ❌ Empty AI response, not sending');
+                } else if (aiResponse.includes("API Key is missing")) {
+                    console.warn('[Widget] ⚠️ AI Response skipped: Missing API Key');
+                } else {
+                    console.log('[Widget] ℹ️ AI response contains error message, sending as-is');
+                    await globalChatService.sendMessage({
+                        session_id: currentSession.id,
+                        content: aiResponse,
+                        sender_type: 'system',
+                        sender_name: 'System'
+                    });
+                }
+            } catch (err) {
+                console.error('[Widget] ❌ Error in AI auto-response:', err);
             }
+        } else if (isAgentAssigned) {
+            console.log('[Widget] AI auto-response skipped: Agent assigned');
+        } else {
+            console.log('[Widget] AI auto-response skipped: AI disabled or not configured');
         }
     };
 
@@ -296,6 +366,15 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
                     </div>
                 </div>
                 <div className="flex items-center gap-1">
+                    {!showPreChat && currentSession && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); handleEndChat(); }}
+                            title="End Conversation"
+                            className="p-2 hover:bg-white/10 rounded-lg text-white/80 transition-colors"
+                        >
+                            <RotateCcw className="w-4 h-4" />
+                        </button>
+                    )}
                     <button onClick={(e) => { e.stopPropagation(); setIsMinimized(!isMinimized); }} className="p-2 hover:bg-white/10 rounded-lg text-white/80 transition-colors">
                         <Minimize2 className="w-4 h-4" />
                     </button>
@@ -356,14 +435,43 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
                                 {messages.map((msg, i) => (
                                     <div key={i} className={`flex ${msg.sender === 'visitor' ? 'justify-end' : 'justify-start'}`}>
                                         <div className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${msg.sender === 'visitor'
-                                                ? 'bg-blue-600 text-white rounded-tr-sm'
-                                                : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700/50'
+                                            ? 'bg-blue-600 text-white rounded-tr-sm'
+                                            : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700/50'
                                             }`}>
+                                            {msg.sender !== 'visitor' && (
+                                                <span className="text-[10px] font-bold text-blue-400 mb-1 block uppercase tracking-wider">
+                                                    {msg.senderName || (msg.sender === 'system' ? 'AI Assistant' : 'Agent')}
+                                                </span>
+                                            )}
                                             <p className="text-sm leading-relaxed">{msg.content}</p>
                                             <span className="text-[10px] opacity-50 mt-1 block">{msg.timestamp}</span>
                                         </div>
                                     </div>
                                 ))}
+
+                                {config?.ai_enabled && !currentSession?.assigned_to && (
+                                    <div className="flex justify-center mt-4 pt-2">
+                                        <button
+                                            onClick={async () => {
+                                                if (currentSession?.id) {
+                                                    await globalChatService.updateSession(currentSession.id, {
+                                                        status: 'unassigned'
+                                                    });
+                                                    setMessages(prev => [...prev, {
+                                                        id: 'system_' + Date.now(),
+                                                        content: 'Requesting a human agent... One will be with you shortly.',
+                                                        sender: 'system',
+                                                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                                        senderName: 'System'
+                                                    }]);
+                                                }
+                                            }}
+                                            className="text-[10px] font-bold text-white/50 hover:text-white uppercase tracking-tighter border border-white/10 px-3 py-1.5 rounded-full transition-all"
+                                        >
+                                            Talk to a Human
+                                        </button>
+                                    </div>
+                                )}
                                 <div ref={messagesEndRef} />
                             </div>
 

@@ -200,6 +200,12 @@ function getDefaultConfig() {
         aiSmartSuggestions: true,
         aiSentimentAnalysis: true,
         aiLanguageDetection: true,
+        aiApiKey: '',
+        openaiApiKey: '',
+        anthropicApiKey: '',
+        mistralApiKey: '',
+        deepseekApiKey: '',
+        openrouterApiKey: '',
 
         // Quick Replies
         quickRepliesEnabled: true,

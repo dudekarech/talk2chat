@@ -20,7 +20,9 @@ import {
     Smartphone,
     MapPin,
     Target,
-    BarChart
+    BarChart,
+    Trash2,
+    Download
 } from 'lucide-react';
 import { globalChatService, ChatSession, ChatMessage as RealtimeChatMessage, ChatNote, supabase } from '../../services/globalChatRealtimeService';
 import { notificationService } from '../../services/notificationService';
@@ -28,7 +30,7 @@ import { notificationService } from '../../services/notificationService';
 interface Message {
     id: string;
     content: string;
-    sender: 'visitor' | 'agent' | 'system';
+    sender: 'visitor' | 'agent' | 'system' | 'ai';
     timestamp: string;
     senderName?: string;
 }
@@ -48,6 +50,11 @@ interface ChatListItem {
     platform: string;
     location: string;
     visitor_metadata?: ChatSession['visitor_metadata'];
+    ai_summary?: string;
+    ai_sentiment?: string;
+    resolution_category?: string;
+    extracted_lead_info?: any;
+    is_deleted?: boolean;
 }
 
 interface GlobalSharedInboxProps {
@@ -58,7 +65,7 @@ interface GlobalSharedInboxProps {
 export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMode = false }) => {
     const [selectedChat, setSelectedChat] = useState<string | null>(null);
     const [messageInput, setMessageInput] = useState('');
-    const [activeTab, setActiveTab] = useState<'all' | 'mine' | 'unassigned'>('all');
+    const [activeTab, setActiveTab] = useState<'all' | 'mine' | 'unassigned' | 'resolved'>('all');
     const [chats, setChats] = useState<ChatListItem[]>([]);
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -178,6 +185,8 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                 return;
             }
 
+            const activeSessions = sessions.filter(s => !s.is_deleted);
+
             const formattedChats: ChatListItem[] = sessions.map((session, index) => ({
                 id: session.id,
                 visitorName: session.visitor_name,
@@ -185,14 +194,19 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                 lastMessage: 'Click to view conversation',
                 timestamp: formatTimestamp(session.last_activity || session.created_at),
                 status: session.status,
-                assignedTo: session.assigned_agent_id,
+                assignedTo: session.assigned_to,
                 tenant_id: session.tenant_id,
                 tags: session.tags || [],
                 unreadCount: 0,
                 avatarColor: avatarColors[index % avatarColors.length],
                 platform: session.visitor_metadata?.platform || 'web',
                 location: session.visitor_metadata?.location || 'Unknown',
-                visitor_metadata: session.visitor_metadata
+                visitor_metadata: session.visitor_metadata,
+                ai_summary: session.ai_summary,
+                ai_sentiment: session.ai_sentiment,
+                resolution_category: session.resolution_category,
+                extracted_lead_info: session.extracted_lead_info,
+                is_deleted: session.is_deleted
             }));
 
             setChats(formattedChats);
@@ -288,12 +302,12 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
         if (!selectedChat) return;
 
         const { error } = await globalChatService.updateSession(selectedChat, {
-            assigned_agent_id: agentId,
+            assigned_to: agentId,
             status: 'active'
         });
 
         if (!error) {
-            updateChatInList(selectedChat, { assigned_agent_id: agentId, status: 'active' });
+            updateChatInList(selectedChat, { assigned_to: agentId, status: 'active' });
         }
     };
 
@@ -318,7 +332,7 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
             lastMessage: 'New conversation started',
             timestamp: formatTimestamp(session.created_at),
             status: session.status,
-            assignedTo: session.assigned_agent_id,
+            assignedTo: session.assigned_to,
             tags: session.tags || [],
             unreadCount: 1,
             avatarColor: avatarColors[Math.floor(Math.random() * avatarColors.length)],
@@ -336,7 +350,7 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                 ? {
                     ...chat,
                     status: (updates.status as any) || chat.status,
-                    assignedTo: updates.assigned_agent_id || chat.assignedTo,
+                    assignedTo: updates.assigned_to || chat.assignedTo,
                     tags: updates.tags || chat.tags,
                     timestamp: updates.last_activity ? formatTimestamp(updates.last_activity) : chat.timestamp,
                     visitor_metadata: updates.visitor_metadata || chat.visitor_metadata
@@ -394,10 +408,13 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
         }
     };
 
-    const handleUpdateChatStatus = async (chatId: string, status: 'open' | 'pending' | 'resolved') => {
+    const handleUpdateChatStatus = async (chatId: string, status: 'open' | 'pending' | 'resolved' | 'escalated') => {
         try {
-            await globalChatService.updateSession(chatId, { status });
-            // Update will be handled by real-time subscription
+            if (status === 'resolved') {
+                await globalChatService.endSession(chatId);
+            } else {
+                await globalChatService.updateSession(chatId, { status });
+            }
         } catch (error) {
             console.error('Error updating chat status:', error);
         }
@@ -415,6 +432,67 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
         if (diffHours < 24) return `${diffHours}h ago`;
         const diffDays = Math.floor(diffHours / 24);
         return `${diffDays}d ago`;
+    };
+
+    const handleExportChat = () => {
+        if (!selectedChat || messages.length === 0) return;
+
+        const activeChat = chats.find(c => c.id === selectedChat);
+        const transcript = messages
+            .map(m => `[${m.timestamp}] ${m.senderName || m.sender}: ${m.content}`)
+            .join('\n');
+
+        const metadata = [
+            `Chat ID: ${selectedChat}`,
+            `Visitor: ${activeChat?.visitorName}`,
+            `Email: ${activeChat?.visitorEmail || 'N/A'}`,
+            `Status: ${activeChat?.status}`,
+            `Summary: ${activeChat?.ai_summary || 'N/A'}`,
+            `Sentiment: ${activeChat?.ai_sentiment || 'N/A'}`
+        ].join('\n');
+
+        const fullExport = `${metadata}\n\n--- TRANSCRIPT ---\n\n${transcript}`;
+
+        const blob = new Blob([fullExport], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `chat_export_${selectedChat}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleDeleteChat = async (chatId: string) => {
+        if (window.confirm('Are you sure you want to delete this conversation? It will be removed from your inbox.')) {
+            try {
+                const { success } = await globalChatService.softDeleteSession(chatId);
+                if (success) {
+                    setChats(prev => prev.filter(c => c.id !== chatId));
+                    setSelectedChat(null);
+                }
+            } catch (error) {
+                console.error('Error deleting chat:', error);
+            }
+        }
+    };
+
+    const getFilteredChats = () => {
+        const { data: user } = { data: { user: currentUserProfile } }; // Fallback to current profile
+        const userId = currentUserProfile?.user_id;
+
+        if (activeTab === 'mine') {
+            return chats.filter(c => c.assignedTo === userId && c.status !== 'resolved');
+        }
+        if (activeTab === 'unassigned') {
+            return chats.filter(c => !c.assignedTo && c.status !== 'resolved');
+        }
+        if (activeTab === 'resolved') {
+            return chats.filter(c => c.status === 'resolved');
+        }
+        // 'all' tab shows everything except resolved
+        return chats.filter(c => c.status !== 'resolved');
     };
 
     const activeChat = chats.find(c => c.id === selectedChat);
@@ -479,18 +557,24 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                     >
                         Unassigned
                     </button>
+                    <button
+                        onClick={() => setActiveTab('resolved')}
+                        className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'resolved' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+                    >
+                        Resolved
+                    </button>
                 </div>
 
                 {/* Chat List */}
                 <div className="flex-1 overflow-y-auto">
-                    {chats.length === 0 ? (
+                    {getFilteredChats().length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-slate-500 p-8 text-center">
                             <MessageSquare className="w-12 h-12 mb-3 opacity-20" />
                             <p className="text-sm">No conversations yet</p>
                             <p className="text-xs mt-1">New chats will appear here</p>
                         </div>
                     ) : (
-                        chats.map(chat => (
+                        getFilteredChats().map(chat => (
                             <div
                                 key={chat.id}
                                 onClick={() => setSelectedChat(chat.id)}
@@ -558,7 +642,21 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                             <button className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors" title="Transfer Chat">
                                 <CornerUpRight className="w-5 h-5" />
                             </button>
+                            <button
+                                onClick={handleExportChat}
+                                className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-blue-400 transition-colors"
+                                title="Export Transcript"
+                            >
+                                <Download className="w-5 h-5" />
+                            </button>
                             <div className="h-6 w-px bg-slate-700 mx-1" />
+                            <button
+                                onClick={() => handleDeleteChat(activeChat.id)}
+                                className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-red-400 transition-colors"
+                                title="Delete Conversation"
+                            >
+                                <Trash2 className="w-5 h-5" />
+                            </button>
                             <button className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors">
                                 <MoreVertical className="w-5 h-5" />
                             </button>
@@ -657,6 +755,16 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                                     }`}>
                                     {activeChat.status}
                                 </span>
+                                {(activeChat.visitor_metadata?.scrollDepth || 0) > 50 || (activeChat.visitor_metadata?.leadScore || 0) > 50 ? (
+                                    <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded text-[10px] font-bold uppercase flex items-center gap-1 animate-pulse">
+                                        <TrendingUp className="w-3 h-3" />
+                                        High Value
+                                    </span>
+                                ) : (
+                                    <span className="px-2 py-1 bg-slate-500/20 text-slate-400 rounded text-[10px] font-bold uppercase">
+                                        Low Activity
+                                    </span>
+                                )}
                                 {activeChat.assignedTo && (
                                     <span className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded text-[10px] font-bold uppercase flex items-center gap-1">
                                         <Users className="w-3 h-3" />
@@ -718,6 +826,53 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                                 </div>
                             </div>
 
+                            {/* AI Intelligence Section (Trendsetter Feature) */}
+                            {activeChat.ai_summary && (
+                                <div className="p-5 bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border-2 border-blue-500/30 rounded-2xl shadow-xl">
+                                    <h4 className="text-[11px] font-black text-blue-300 uppercase tracking-[0.2em] mb-4 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <TrendingUp className="w-4 h-4" />
+                                            AI Analyst Report
+                                        </div>
+                                        <div className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+                                    </h4>
+
+                                    {activeChat.resolution_category && (
+                                        <div className="mb-4">
+                                            <span className="text-[10px] px-3 py-1 bg-blue-500 text-white rounded-md font-bold uppercase tracking-widest shadow-lg">
+                                                {activeChat.resolution_category}
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    <div className="bg-slate-900/60 p-4 rounded-xl border border-blue-500/20 mb-5">
+                                        <p className="text-xs text-blue-100 leading-relaxed font-semibold">
+                                            {activeChat.ai_summary}
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 pt-4 border-t border-blue-500/20">
+                                        <div className="bg-slate-900/40 p-2 rounded-lg">
+                                            <span className="text-[9px] text-slate-500 font-bold block uppercase mb-1">Sentiment</span>
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${activeChat.ai_sentiment === 'Positive' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                                                activeChat.ai_sentiment === 'Negative' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                                                    'bg-slate-500/20 text-slate-400 border border-slate-500/30'
+                                                }`}>
+                                                {activeChat.ai_sentiment}
+                                            </span>
+                                        </div>
+                                        {activeChat.extracted_lead_info?.email && (
+                                            <div className="bg-slate-900/40 p-2 rounded-lg">
+                                                <span className="text-[9px] text-slate-500 font-bold block uppercase mb-1">Email Captured</span>
+                                                <span className="text-[10px] text-blue-300 font-bold truncate block" title={activeChat.extracted_lead_info.email}>
+                                                    {activeChat.extracted_lead_info.email}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Lead Qualification Section */}
                             <div>
                                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -771,7 +926,7 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                                             >
                                                 <option value="">Unassigned</option>
                                                 {agents.map(agent => (
-                                                    <option key={agent.user_id} value={agent.user_id}>{agent.name}</option>
+                                                    <option key={agent.user_id || agent.email || Math.random()} value={agent.user_id || ''}>{agent.name}</option>
                                                 ))}
                                             </select>
                                         )}

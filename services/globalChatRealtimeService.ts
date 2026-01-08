@@ -1,16 +1,9 @@
-import { createClient, RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
+import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
+import { aiService } from './aiService';
+import { supabase } from './supabaseClient';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-
-// Create Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    realtime: {
-        params: {
-            eventsPerSecond: 10
-        }
-    }
-});
+// Export supabase from central client to avoid multiple instances
+export { supabase };
 
 // Types
 export interface ChatSession {
@@ -18,9 +11,9 @@ export interface ChatSession {
     visitor_name: string;
     visitor_email?: string;
     visitor_id: string;
-    status: 'open' | 'pending' | 'resolved' | 'active' | 'waiting' | 'unassigned' | 'escalated';
+    status: 'open' | 'pending' | 'resolved' | 'active' | 'waiting' | 'unassigned' | 'escalated' | 'expired';
     channel: 'web' | 'mobile';
-    assigned_agent_id?: string;
+    assigned_to?: string;
     tenant_id?: string | null;
     tags: string[];
     visitor_metadata: {
@@ -38,6 +31,19 @@ export interface ChatSession {
     created_at: string;
     updated_at: string;
     last_activity: string;
+    ended_at?: string;
+    is_deleted?: boolean;
+    deleted_at?: string;
+    // AI Enrichment Fields
+    ai_summary?: string;
+    ai_sentiment?: string;
+    extracted_lead_info?: {
+        email?: string;
+        phone?: string;
+        company?: string;
+        name?: string;
+    };
+    resolution_category?: string;
 }
 
 export interface ChatNote {
@@ -53,7 +59,7 @@ export interface ChatMessage {
     id: string;
     session_id: string;
     content: string;
-    sender_type: 'visitor' | 'agent' | 'system';
+    sender_type: 'visitor' | 'agent' | 'system' | 'ai';
     sender_id?: string;
     sender_name: string;
     metadata?: {
@@ -79,6 +85,16 @@ export interface WidgetConfig {
     allowed_domains: string[];
     enable_captcha: boolean;
     enabled_24_7: boolean;
+    ai_enabled?: boolean;
+    ai_provider?: string;
+    ai_model?: string;
+    ai_api_key?: string;
+    openrouter_api_key?: string;
+    openai_api_key?: string;
+    anthropic_api_key?: string;
+    mistral_api_key?: string;
+    deepseek_api_key?: string;
+    ai_knowledge_base?: string;
 }
 
 // Realtime Service Class
@@ -350,7 +366,7 @@ class GlobalChatRealtimeService {
         }
 
         if (filters?.assigned_to) {
-            query = query.eq('assigned_agent_id', filters.assigned_to);
+            query = query.eq('assigned_to', filters.assigned_to);
         }
 
         const { data, error } = await query;
@@ -400,18 +416,27 @@ class GlobalChatRealtimeService {
      * Update visitor metadata (Lead Qualification / Metrics)
      */
     async updateVisitorMetadata(sessionId: string, metadata: Partial<ChatSession['visitor_metadata']>) {
-        const { data: session } = await this.supabase
-            .from('global_chat_sessions')
-            .select('visitor_metadata')
-            .eq('id', sessionId)
-            .single();
+        try {
+            const { data: session, error: fetchError } = await this.supabase
+                .from('global_chat_sessions')
+                .select('visitor_metadata')
+                .eq('id', sessionId)
+                .maybeSingle();
 
-        const updatedMetadata = {
-            ...(session?.visitor_metadata || {}),
-            ...metadata
-        };
+            if (fetchError) {
+                console.warn('[Realtime] Failed to fetch existing metadata:', fetchError);
+            }
 
-        return this.updateSession(sessionId, { visitor_metadata: updatedMetadata });
+            const updatedMetadata = {
+                ...(session?.visitor_metadata || {}),
+                ...metadata
+            };
+
+            return this.updateSession(sessionId, { visitor_metadata: updatedMetadata });
+        } catch (error) {
+            console.error('[Realtime] Exception in updateVisitorMetadata:', error);
+            return { session: null, error };
+        }
     }
 
     /**
@@ -439,19 +464,45 @@ class GlobalChatRealtimeService {
     /**
      * Get widget configuration
      */
+    /**
+     * Get widget configuration (tenant-aware)
+     */
     async getWidgetConfig(): Promise<{ config: WidgetConfig | null; error: any }> {
-        const { data, error } = await this.supabase
-            .from('global_widget_config')
-            .select('*')
-            .eq('config_key', 'global_widget')
-            .single();
+        try {
+            const { data: { user } } = await this.supabase.auth.getUser();
+            let tenantId = null;
 
-        if (error) {
-            console.error('[Realtime] Error fetching widget config:', error);
+            if (user) {
+                const { data: profile } = await this.supabase
+                    .from('user_profiles')
+                    .select('tenant_id')
+                    .eq('user_id', user.id)
+                    .single();
+                tenantId = profile?.tenant_id;
+            }
+
+            let query = this.supabase
+                .from('global_widget_config')
+                .select('*');
+
+            if (tenantId) {
+                query = query.eq('tenant_id', tenantId);
+            } else {
+                query = query.eq('config_key', 'global_widget').is('tenant_id', null);
+            }
+
+            const { data, error } = await query.maybeSingle();
+
+            if (error) {
+                console.error('[Realtime] Error fetching widget config:', error);
+                return { config: null, error };
+            }
+
+            return { config: data as WidgetConfig, error: null };
+        } catch (error) {
+            console.error('[Realtime] Exception in getWidgetConfig:', error);
             return { config: null, error };
         }
-
-        return { config: data as WidgetConfig, error: null };
     }
 
     async findOrCreateSession(visitorData: {
@@ -477,12 +528,93 @@ class GlobalChatRealtimeService {
         const { data: existingSession } = await findQuery.maybeSingle();
 
         if (existingSession) {
-            console.log('[Realtime] Found existing session:', existingSession);
-            return { session: existingSession as ChatSession, error: null };
+            // CHECK EXPIRATION: If 30 minutes of inactivity, mark as expired and start fresh
+            const lastActivity = new Date(existingSession.last_activity).getTime();
+            const now = new Date().getTime();
+            const inactiveMinutes = (now - lastActivity) / (1000 * 60);
+
+            if (inactiveMinutes > 30) {
+                console.log(`[Realtime] Session ${existingSession.id} expired (${Math.round(inactiveMinutes)}m inactive). Starting fresh.`);
+                await this.updateSession(existingSession.id, {
+                    status: 'expired',
+                    ended_at: new Date().toISOString()
+                });
+            } else {
+                console.log('[Realtime] Found existing session:', existingSession);
+                return { session: existingSession as ChatSession, error: null };
+            }
         }
 
-        // Create new session if none exists
+        // Create new session if none exists or previous expired
         return this.createSession(visitorData);
+    }
+
+    /**
+     * Explicitly end a session with AI analysis enrichment
+     */
+    async endSession(sessionId: string): Promise<{ success: boolean; error: any }> {
+        console.log('[Realtime] Ending session and starting AI enrichment:', sessionId);
+
+        // 1. Mark as resolved immediately for UI responsiveness
+        const { error: updateError } = await this.updateSession(sessionId, {
+            status: 'resolved',
+            ended_at: new Date().toISOString()
+        });
+
+        if (updateError) return { success: false, error: updateError };
+
+        // 2. Perform AI Analysis Background Task (don't await to avoid blocking UI)
+        this.enrichSessionWithAI(sessionId).catch(err =>
+            console.error('[Realtime] AI Enrichment failed:', err)
+        );
+
+        return { success: true, error: null };
+    }
+
+    /**
+     * Background task to summarize and extract info from a chat
+     */
+    private async enrichSessionWithAI(sessionId: string) {
+        // Fetch messages for transcript
+        const { messages } = await this.getMessages(sessionId);
+        if (!messages || messages.length === 0) return;
+
+        const transcript = messages
+            .map(m => `${m.sender_name}: ${m.content}`)
+            .join('\n');
+
+        // Get API Key (try to find any available key in widget config)
+        const { config } = await this.getWidgetConfig();
+        const apiKey = config?.ai_api_key || config?.openrouter_api_key || (window as any).GEMINI_API_KEY;
+
+        if (!apiKey) {
+            console.warn('[Realtime] No API Key found for AI enrichment');
+            return;
+        }
+
+        const analysis = await aiService.analyzeChatTranscript(transcript, apiKey);
+
+        // Save enrichment data
+        await this.updateSession(sessionId, {
+            ai_summary: analysis.summary,
+            ai_sentiment: analysis.sentiment,
+            extracted_lead_info: analysis.leads,
+            resolution_category: analysis.category
+        } as any);
+
+        console.log('[Realtime] AI Enrichment complete for:', sessionId);
+    }
+
+    /**
+     * Soft delete a session (Deletion Protocol)
+     */
+    async softDeleteSession(sessionId: string): Promise<{ success: boolean; error: any }> {
+        const { error } = await this.updateSession(sessionId, {
+            is_deleted: true,
+            deleted_at: new Date().toISOString()
+        } as any);
+
+        return { success: !error, error };
     }
 }
 

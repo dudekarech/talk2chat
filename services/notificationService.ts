@@ -21,6 +21,7 @@ export interface SupportTicket {
     description: string;
     status: 'open' | 'in_progress' | 'resolved' | 'closed';
     priority: 'low' | 'medium' | 'high' | 'urgent';
+    assigned_agent_id?: string;
     created_at: string;
     updated_at: string;
 }
@@ -45,20 +46,35 @@ export class NotificationService {
     }
 
     /**
-     * Fetch notifications for the current user
+     * Fetch notifications for the current user (Tenant-isolated)
      */
     async getNotifications() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return { data: [], error: 'Not authenticated' };
 
-        // Get notifications and then check read status
-        const { data: notifications, error } = await supabase
+        // Get user's tenant_id to filter notifications
+        const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('tenant_id')
+            .eq('user_id', user.id)
+            .single();
+
+        let query = supabase
             .from('system_notifications')
             .select(`
                 *,
                 system_notification_reads(user_id)
-            `)
-            .order('created_at', { ascending: false });
+            `);
+
+        // Filter: target_type is 'all' OR target_tenant_id matches user's tenant
+        if (profile?.tenant_id) {
+            query = query.or(`target_type.eq.all,target_tenant_id.eq.${profile.tenant_id}`);
+        } else {
+            // Global admins only see 'all' notifications usually, or those targeting them specifically (if any)
+            query = query.eq('target_type', 'all');
+        }
+
+        const { data: notifications, error } = await query.order('created_at', { ascending: false });
 
         if (error) return { data: [], error };
 
@@ -127,12 +143,27 @@ export class NotificationService {
     }
 
     /**
-     * Get tickets for current tenant
+     * Get tickets for current tenant (Tenant-isolated)
      */
     async getMyTickets() {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { data: [], error: 'Not authenticated' };
+
+        // Fetch user's tenant_id
+        const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('tenant_id')
+            .eq('user_id', user.id)
+            .single();
+
+        if (!profile?.tenant_id) {
+            return { data: [], error: 'Tenant context required' };
+        }
+
         const { data, error } = await supabase
             .from('support_tickets')
             .select('*')
+            .eq('tenant_id', profile.tenant_id)
             .order('created_at', { ascending: false });
 
         return { data, error };
@@ -190,7 +221,7 @@ export class NotificationService {
      */
     async assignTicketAgent(ticketId: string, agentId: string) {
         return this.updateTicket(ticketId, {
-            assigned_agent_id: agentId as any, // Cast to any as SupportTicket interface might need update
+            assigned_agent_id: agentId,
             status: 'in_progress'
         });
     }

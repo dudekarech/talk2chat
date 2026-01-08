@@ -9,8 +9,44 @@ import {
     AlertTriangle,
     CheckCircle2
 } from 'lucide-react';
+import { supabase } from '../../services/supabaseClient';
 
 export const DashboardHome: React.FC = () => {
+    const [isAuthorized, setIsAuthorized] = React.useState<boolean | null>(null);
+
+    React.useEffect(() => {
+        const checkAuth = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                setIsAuthorized(false);
+                return;
+            }
+
+            const { data: profile } = await supabase
+                .from('user_profiles')
+                .select('role, tenant_id')
+                .eq('user_id', user.id)
+                .single();
+
+            // Only Super Admins can see the global system overview stats
+            setIsAuthorized(profile?.role === 'super_admin' && profile?.tenant_id === null);
+        };
+
+        checkAuth();
+    }, []);
+
+    if (isAuthorized === null) return null; // Loading
+
+    if (!isAuthorized) {
+        return (
+            <div className="p-12 text-center bg-slate-800 rounded-2xl border border-slate-700">
+                <AlertTriangle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+                <h2 className="text-xl font-bold text-white mb-2">Restricted Access</h2>
+                <p className="text-slate-400">Only Super Administrators can view the platform-wide system overview.</p>
+            </div>
+        );
+    }
+
     const stats = [
         { label: 'Total Tenants', value: '142', change: '+12%', trend: 'up', icon: Building2, color: 'blue' },
         { label: 'Active Users', value: '1,234', change: '+5.4%', trend: 'up', icon: Users, color: 'purple' },
@@ -88,7 +124,7 @@ export const DashboardHome: React.FC = () => {
                                         <td className="px-6 py-4 font-medium text-white">{tenant.name}</td>
                                         <td className="px-6 py-4 text-slate-300">
                                             <span className={`px-2 py-1 rounded text-xs font-medium ${tenant.plan === 'Enterprise' ? 'bg-purple-500/10 text-purple-400' :
-                                                    tenant.plan === 'Pro' ? 'bg-blue-500/10 text-blue-400' : 'bg-slate-700 text-slate-400'
+                                                tenant.plan === 'Pro' ? 'bg-blue-500/10 text-blue-400' : 'bg-slate-700 text-slate-400'
                                                 }`}>
                                                 {tenant.plan}
                                             </span>
@@ -97,10 +133,10 @@ export const DashboardHome: React.FC = () => {
                                         <td className="px-6 py-4 text-slate-300">{tenant.revenue}</td>
                                         <td className="px-6 py-4">
                                             <span className={`flex items-center gap-1.5 text-xs font-medium ${tenant.status === 'Active' ? 'text-green-400' :
-                                                    tenant.status === 'Trial' ? 'text-blue-400' : 'text-red-400'
+                                                tenant.status === 'Trial' ? 'text-blue-400' : 'text-red-400'
                                                 }`}>
                                                 <span className={`w-1.5 h-1.5 rounded-full ${tenant.status === 'Active' ? 'bg-green-400' :
-                                                        tenant.status === 'Trial' ? 'bg-blue-400' : 'bg-red-400'
+                                                    tenant.status === 'Trial' ? 'bg-blue-400' : 'bg-red-400'
                                                     }`}></span>
                                                 {tenant.status}
                                             </span>
@@ -121,7 +157,7 @@ export const DashboardHome: React.FC = () => {
                         {alerts.map((alert) => (
                             <div key={alert.id} className="flex gap-4 p-4 rounded-lg bg-slate-900/50 border border-slate-700">
                                 <div className={`mt-1 ${alert.type === 'critical' ? 'text-red-500' :
-                                        alert.type === 'warning' ? 'text-orange-500' : 'text-blue-500'
+                                    alert.type === 'warning' ? 'text-orange-500' : 'text-blue-500'
                                     }`}>
                                     {alert.type === 'critical' ? <AlertTriangle className="w-5 h-5" /> :
                                         alert.type === 'warning' ? <AlertTriangle className="w-5 h-5" /> :

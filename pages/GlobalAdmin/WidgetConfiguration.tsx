@@ -289,8 +289,8 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
                                                 key={theme.id}
                                                 onClick={() => setWidgetConfig({ ...widgetConfig, seasonalTheme: theme.id })}
                                                 className={`flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${(widgetConfig.seasonalTheme || 'none') === theme.id
-                                                        ? 'bg-blue-600/10 border-blue-600'
-                                                        : 'bg-slate-900/50 border-slate-700 hover:border-slate-500'
+                                                    ? 'bg-blue-600/10 border-blue-600'
+                                                    : 'bg-slate-900/50 border-slate-700 hover:border-slate-500'
                                                     }`}
                                             >
                                                 <theme.icon className={`w-8 h-8 ${theme.color}`} />
@@ -708,12 +708,29 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
                                                 <label className="block text-sm font-medium text-slate-300 mb-2">AI Provider</label>
                                                 <select
                                                     value={widgetConfig.aiProvider || 'gemini'}
-                                                    onChange={(e) => setWidgetConfig({ ...widgetConfig, aiProvider: e.target.value })}
+                                                    onChange={(e) => {
+                                                        const provider = e.target.value;
+                                                        let defaultModel = 'gemini-1.5-flash';
+                                                        if (provider === 'openai') defaultModel = 'gpt-4o-mini';
+                                                        if (provider === 'anthropic') defaultModel = 'claude-3-5-sonnet-20240620';
+                                                        if (provider === 'mistral') defaultModel = 'mistral-large-latest';
+                                                        if (provider === 'deepseek') defaultModel = 'deepseek-chat';
+                                                        if (provider === 'openrouter') defaultModel = 'google/gemini-2.0-flash-001';
+
+                                                        setWidgetConfig({
+                                                            ...widgetConfig,
+                                                            aiProvider: provider,
+                                                            aiModel: defaultModel
+                                                        });
+                                                    }}
                                                     className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
                                                 >
                                                     <option value="gemini">Google Gemini</option>
                                                     <option value="openai">OpenAI GPT</option>
                                                     <option value="anthropic">Anthropic Claude</option>
+                                                    <option value="mistral">Mistral AI</option>
+                                                    <option value="deepseek">DeepSeek AI</option>
+                                                    <option value="openrouter">OpenRouter (Most Models)</option>
                                                 </select>
                                             </div>
 
@@ -724,8 +741,51 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
                                                     onChange={(e) => setWidgetConfig({ ...widgetConfig, aiModel: e.target.value })}
                                                     className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
                                                 >
-                                                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast)</option>
-                                                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Smart)</option>
+                                                    {widgetConfig.aiProvider === 'gemini' && (
+                                                        <>
+                                                            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast)</option>
+                                                            <option value="gemini-1.5-pro">Gemini 1.5 Pro (Smart)</option>
+                                                            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Next-gen)</option>
+                                                        </>
+                                                    )}
+                                                    {widgetConfig.aiProvider === 'openai' && (
+                                                        <>
+                                                            <option value="gpt-4o">GPT-4o (High Intelligence)</option>
+                                                            <option value="gpt-4o-mini">GPT-4o mini (Fast & Cheap)</option>
+                                                            <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                                                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                                                        </>
+                                                    )}
+                                                    {widgetConfig.aiProvider === 'anthropic' && (
+                                                        <>
+                                                            <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet (Most Smart)</option>
+                                                            <option value="claude-3-haiku-20240307">Claude 3 Haiku (Fastest)</option>
+                                                            <option value="claude-3-opus-20240229">Claude 3 Opus (Powerful)</option>
+                                                        </>
+                                                    )}
+                                                    {widgetConfig.aiProvider === 'mistral' && (
+                                                        <>
+                                                            <option value="mistral-large-latest">Mistral Large</option>
+                                                            <option value="mistral-small-latest">Mistral Small</option>
+                                                            <option value="open-mixtral-8x7b">Mixtral 8x7b</option>
+                                                        </>
+                                                    )}
+                                                    {widgetConfig.aiProvider === 'deepseek' && (
+                                                        <>
+                                                            <option value="deepseek-chat">DeepSeek Chat</option>
+                                                            <option value="deepseek-coder">DeepSeek Coder</option>
+                                                        </>
+                                                    )}
+                                                    {widgetConfig.aiProvider === 'openrouter' && (
+                                                        <>
+                                                            <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (Free/Fast)</option>
+                                                            <option value="meta-llama/llama-3.1-8b-instruct:free">Llama 3.1 8B (Free)</option>
+                                                            <option value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B</option>
+                                                            <option value="gryphe/mythomax-l2-13b">MythoMax 13B</option>
+                                                            <option value="mistralai/mistral-7b-instruct:free">Mistral 7B (Free)</option>
+                                                            <option value="openrouter/auto">Auto (Best for current task)</option>
+                                                        </>
+                                                    )}
                                                 </select>
                                             </div>
                                         </div>
@@ -739,14 +799,34 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
                                                 <div>
                                                     <label className="block text-sm font-medium text-slate-300 mb-2">
                                                         {widgetConfig.aiProvider === 'gemini' ? 'Google Gemini API Key' :
-                                                            widgetConfig.aiProvider === 'openai' ? 'OpenAI Secret Key' : 'AI Provider API Key'}
+                                                            widgetConfig.aiProvider === 'openai' ? 'OpenAI Secret Key' :
+                                                                widgetConfig.aiProvider === 'anthropic' ? 'Anthropic API Key' :
+                                                                    widgetConfig.aiProvider === 'mistral' ? 'Mistral API Key' :
+                                                                        widgetConfig.aiProvider === 'deepseek' ? 'DeepSeek API Key' :
+                                                                            widgetConfig.aiProvider === 'openrouter' ? 'OpenRouter API Key' : 'AI Provider API Key'}
                                                     </label>
                                                     <div className="relative">
                                                         <input
                                                             type="password"
-                                                            value={widgetConfig.aiApiKey || ''}
-                                                            onChange={(e) => setWidgetConfig({ ...widgetConfig, aiApiKey: e.target.value })}
-                                                            placeholder="Enter your API key..."
+                                                            value={
+                                                                widgetConfig.aiProvider === 'gemini' ? (widgetConfig.aiApiKey || '') :
+                                                                    widgetConfig.aiProvider === 'openai' ? (widgetConfig.openaiApiKey || '') :
+                                                                        widgetConfig.aiProvider === 'anthropic' ? (widgetConfig.anthropicApiKey || '') :
+                                                                            widgetConfig.aiProvider === 'mistral' ? (widgetConfig.mistralApiKey || '') :
+                                                                                widgetConfig.aiProvider === 'deepseek' ? (widgetConfig.deepseekApiKey || '') :
+                                                                                    widgetConfig.aiProvider === 'openrouter' ? (widgetConfig.openrouterApiKey || '') : ''
+                                                            }
+                                                            onChange={(e) => {
+                                                                const key = e.target.value;
+                                                                const provider = widgetConfig.aiProvider;
+                                                                if (provider === 'gemini') setWidgetConfig({ ...widgetConfig, aiApiKey: key });
+                                                                else if (provider === 'openai') setWidgetConfig({ ...widgetConfig, openaiApiKey: key });
+                                                                else if (provider === 'anthropic') setWidgetConfig({ ...widgetConfig, anthropicApiKey: key });
+                                                                else if (provider === 'mistral') setWidgetConfig({ ...widgetConfig, mistralApiKey: key });
+                                                                else if (provider === 'deepseek') setWidgetConfig({ ...widgetConfig, deepseekApiKey: key });
+                                                                else if (provider === 'openrouter') setWidgetConfig({ ...widgetConfig, openrouterApiKey: key });
+                                                            }}
+                                                            placeholder={`Enter your ${widgetConfig.aiProvider} API key...`}
                                                             className="w-full bg-slate-900/50 border border-slate-700 rounded-lg pl-10 pr-3 py-2 text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
                                                         />
                                                         <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />

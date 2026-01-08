@@ -24,18 +24,28 @@ interface Chat {
     visitor_name: string;
     visitor_email: string;
     status: string;
-    assigned_agent_id?: string;
+    assigned_to?: string;
     created_at: string;
     last_message_at: string;
     unread_count?: number;
     notes_count?: number;
+    // AI Enrichment Fields
+    ai_summary?: string;
+    ai_sentiment?: string;
+    extracted_lead_info?: {
+        email?: string;
+        phone?: string;
+        company?: string;
+        name?: string;
+    };
+    resolution_category?: string;
 }
 
 interface Message {
     id: string;
     session_id: string;
-    message: string;
-    sender_type: 'visitor' | 'agent';
+    content: string;
+    sender_type: 'visitor' | 'agent' | 'system' | 'ai';
     created_at: string;
     sender_name?: string;
 }
@@ -209,7 +219,7 @@ export const AgentDashboard: React.FC = () => {
                 *,
                 chat_notes(count)
             `)
-            .in('status', ['active', 'pending', 'waiting', 'unassigned', 'escalated', 'completed'])
+            .in('status', ['active', 'pending', 'waiting', 'unassigned', 'escalated', 'completed', 'open'])
             .order('created_at', { ascending: false });
 
         if (tenantId) {
@@ -262,11 +272,11 @@ export const AgentDashboard: React.FC = () => {
         await loadNotes(chat.id);
 
         // Assign to self if unassigned
-        if (!chat.assigned_agent_id && agentInfo) {
+        if (!chat.assigned_to && agentInfo) {
             await supabase
                 .from('global_chat_sessions')
                 .update({
-                    assigned_agent_id: agentInfo.id,
+                    assigned_to: agentInfo.id,
                     status: 'active'
                 })
                 .eq('id', chat.id);
@@ -283,7 +293,7 @@ export const AgentDashboard: React.FC = () => {
             .from('global_chat_messages')
             .insert({
                 session_id: selectedChat.id,
-                message: newMessage,
+                content: newMessage,
                 sender_type: 'agent',
                 sender_name: agentInfo.profile?.name || 'Agent'
             });
@@ -599,7 +609,7 @@ export const AgentDashboard: React.FC = () => {
                                                         <div key={msg.id} className="flex justify-center my-4">
                                                             <div className="px-4 py-1.5 bg-slate-800/40 rounded-full border border-white/5 text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
                                                                 <Shield className="w-3 h-3" />
-                                                                {msg.message}
+                                                                {msg.sender_type === 'ai' ? 'TalkChat Assistant' : msg.content}
                                                             </div>
                                                         </div>
                                                     );
@@ -626,7 +636,7 @@ export const AgentDashboard: React.FC = () => {
                                                                     ? 'bg-slate-800 border border-purple-500/20 text-slate-100 rounded-tl-none'
                                                                     : 'bg-slate-800 text-slate-100 rounded-tl-none border border-white/5'
                                                                 }`}>
-                                                                <p className="leading-relaxed">{msg.message}</p>
+                                                                <p className="leading-relaxed">{msg.content}</p>
                                                             </div>
                                                             <span className="text-[10px] text-slate-600 mt-1 px-1">
                                                                 {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -667,6 +677,53 @@ export const AgentDashboard: React.FC = () => {
                                             <p>Press Enter to send</p>
                                         </div>
                                     </div>
+
+                                    {/* AI Intelligence Section (Trendsetter Feature) */}
+                                    {selectedChat?.ai_summary && (
+                                        <div className="mb-6 p-5 bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border-2 border-blue-500/30 rounded-2xl shadow-xl">
+                                            <h4 className="text-[11px] font-black text-blue-300 uppercase tracking-[0.2em] mb-4 flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <TrendingUp className="w-4 h-4" />
+                                                    AI Analyst Report
+                                                </div>
+                                                <div className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+                                            </h4>
+
+                                            {selectedChat.resolution_category && (
+                                                <div className="mb-4">
+                                                    <span className="text-[10px] px-3 py-1 bg-blue-500 text-white rounded-md font-bold uppercase tracking-widest shadow-lg">
+                                                        {selectedChat.resolution_category}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            <div className="bg-slate-900/60 p-4 rounded-xl border border-blue-500/20 mb-5">
+                                                <p className="text-xs text-blue-100 leading-relaxed font-semibold">
+                                                    {selectedChat.ai_summary}
+                                                </p>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3 pt-4 border-t border-blue-500/20">
+                                                <div className="bg-slate-900/40 p-2 rounded-lg">
+                                                    <span className="text-[9px] text-slate-500 font-bold block uppercase mb-1">Sentiment</span>
+                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${selectedChat.ai_sentiment === 'Positive' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                                                            selectedChat.ai_sentiment === 'Negative' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                                                                'bg-slate-500/20 text-slate-400 border border-slate-500/30'
+                                                        }`}>
+                                                        {selectedChat.ai_sentiment}
+                                                    </span>
+                                                </div>
+                                                {selectedChat.extracted_lead_info?.email && (
+                                                    <div className="bg-slate-900/40 p-2 rounded-lg">
+                                                        <span className="text-[9px] text-slate-500 font-bold block uppercase mb-1">Email Captured</span>
+                                                        <span className="text-[10px] text-blue-300 font-bold truncate block" title={selectedChat.extracted_lead_info.email}>
+                                                            {selectedChat.extracted_lead_info.email}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Notes Overlay */}
                                     <AnimatePresence>

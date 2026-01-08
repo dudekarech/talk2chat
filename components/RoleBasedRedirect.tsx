@@ -25,10 +25,10 @@ export const RoleBasedRedirect: React.FC = () => {
 
             console.log('User authenticated:', user.email);
 
-            // Get user profile with role
+            // Get user profile with role AND tenant_id
             const { data: profile, error: profileError } = await supabase
                 .from('user_profiles')
-                .select('role, status, email')
+                .select('role, status, email, tenant_id')
                 .eq('user_id', user.id)
                 .single();
 
@@ -68,30 +68,27 @@ export const RoleBasedRedirect: React.FC = () => {
 
             console.log('User profile:', profile);
 
-            // Redirect based on role
-            if (profile && profile.role) {
-                switch (profile.role.toLowerCase()) {
-                    case 'super_admin':
-                    case 'admin':
-                        console.log('Redirecting to global admin dashboard');
-                        navigate('/global/dashboard');
-                        break;
-                    case 'tenant_admin':
-                        console.log('Redirecting to tenant dashboard');
-                        navigate('/tenant/dashboard');
-                        break;
-                    case 'manager':
-                    case 'agent':
-                        console.log('Redirecting to agent dashboard');
-                        navigate('/agent/dashboard');
-                        break;
-                    default:
-                        console.log('Unknown role, redirecting to tenant dashboard');
-                        navigate('/tenant/dashboard');
-                }
+            // Redirect based on role AND tenant context
+            const role = profile.role?.toLowerCase() || '';
+            const isGlobalAdmin = !profile.tenant_id && (role === 'super_admin' || role === 'admin');
+
+            if (isGlobalAdmin) {
+                console.log('Redirecting to global admin dashboard');
+                // Ensure they have the local token set if they came from main login
+                localStorage.setItem('global_admin_token', 'valid');
+                navigate('/global/dashboard');
+                return;
+            }
+
+            // Otherwise, they are a tenant user or agent
+            if (role === 'manager' || role === 'agent') {
+                console.log('Redirecting to agent dashboard');
+                navigate('/agent/dashboard');
+            } else if (role === 'tenant_admin' || role === 'admin') {
+                console.log('Redirecting to tenant dashboard');
+                navigate('/tenant/dashboard');
             } else {
-                // No role found, default to tenant dashboard
-                console.log('No role found, redirecting to tenant dashboard');
+                console.log('Unknown role or context, defaulting to tenant dashboard');
                 navigate('/tenant/dashboard');
             }
         } catch (error: any) {
