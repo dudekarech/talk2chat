@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { globalChatService, ChatSession, ChatMessage as RealtimeChatMessage, ChatNote, supabase } from '../../services/globalChatRealtimeService';
 import { notificationService } from '../../services/notificationService';
+import { presenceService, PresenceState } from '../../services/presenceService';
+import { Loader2 } from 'lucide-react';
 
 interface Message {
     id: string;
@@ -78,6 +80,7 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
     const [noteInput, setNoteInput] = useState('');
     const [isNotesOpen, setIsNotesOpen] = useState(false);
     const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
+    const [presence, setPresence] = useState<PresenceState>({});
 
     const avatarColors = ['bg-pink-500', 'bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-orange-500'];
 
@@ -100,6 +103,14 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
             // Load team members for assignment
             const { data: team } = await notificationService.getAgents(isGlobalMode ? null : undefined);
             setAgents(team || []);
+
+            // Join Presence
+            presenceService.joinPresence(user.id, {
+                name: profile?.name || user.email,
+                role: profile?.role || 'agent'
+            }, (state) => {
+                setPresence(state);
+            });
         }
     };
 
@@ -582,8 +593,11 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                             >
                                 <div className="flex justify-between items-start mb-1">
                                     <div className="flex items-center gap-2">
-                                        <div className={`w-2 h-2 rounded-full ${chat.status === 'open' ? 'bg-green-500' : chat.status === 'pending' ? 'bg-orange-500' : 'bg-slate-500'}`} />
+                                        <div className={`w-2 h-2 rounded-full ${presence[chat.visitor_metadata?.visitor_id || ''] ? 'bg-green-400 animate-pulse' : (chat.status === 'open' ? 'bg-green-500' : chat.status === 'pending' ? 'bg-orange-500' : 'bg-slate-500')}`} />
                                         <span className="font-semibold text-sm truncate">{chat.visitorName}</span>
+                                        {presence[chat.visitor_metadata?.visitor_id || ''] && (
+                                            <span className="text-[10px] bg-green-500/20 text-green-400 px-1 rounded uppercase font-bold">Online</span>
+                                        )}
                                     </div>
                                     <span className="text-xs text-slate-500">{chat.timestamp}</span>
                                 </div>
@@ -616,9 +630,18 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                                 {activeChat.visitorName.charAt(0)}
                             </div>
                             <div>
-                                <h3 className="font-bold text-white">{activeChat.visitorName}</h3>
+                                <h3 className="font-bold text-white flex items-center gap-2">
+                                    {activeChat.visitorName}
+                                    {presence[activeChat.visitor_metadata?.visitor_id || ''] && (
+                                        <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Active now" />
+                                    )}
+                                </h3>
                                 <div className="flex items-center gap-2 text-xs text-slate-400">
-                                    <span>{activeChat.location}</span>
+                                    {presence[activeChat.visitor_metadata?.visitor_id || ''] ? (
+                                        <span className="text-green-400">Active now on {activeChat.visitor_metadata?.currentUrl || 'Site'}</span>
+                                    ) : (
+                                        <span>{activeChat.location}</span>
+                                    )}
                                     <span>•</span>
                                     <span>{activeChat.visitorEmail || 'No email'}</span>
                                 </div>
@@ -685,6 +708,18 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                             </div>
                         ))}
                     </div>
+
+                    {/* Typing Indicator */}
+                    {activeChat && presence[activeChat.visitor_metadata?.visitor_id || '']?.[0]?.is_typing && (
+                        <div className="px-6 py-2 flex items-center gap-2">
+                            <div className="flex gap-1">
+                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </div>
+                            <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">{activeChat.visitorName} is typing...</span>
+                        </div>
+                    )}
 
                     {/* Input Area */}
                     <div className="p-4 bg-slate-800/30 border-t border-slate-700">

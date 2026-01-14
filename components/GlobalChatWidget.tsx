@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, X, Minimize2, Paperclip, Smile, MessageSquare, Gift, Ghost, Rabbit, RotateCcw } from 'lucide-react';
+import { Send, X, Minimize2, Paperclip, Smile, MessageSquare, Gift, Ghost, Rabbit, RotateCcw, AlertCircle } from 'lucide-react';
 import { globalChatService, ChatMessage as RealtimeChatMessage, ChatSession } from '../services/globalChatRealtimeService';
 import { widgetConfigService, WidgetConfig } from '../services/widgetConfigService';
 import { aiService } from '../services/aiService';
 import { VisitorInfoPanel } from './VisitorInfoPanel';
+import { presenceService } from '../services/presenceService';
 
 interface Message {
     id: string;
@@ -42,6 +43,9 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
     const [isLoading, setIsLoading] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
     const [config, setConfig] = useState<WidgetConfig | null>(null);
+    const [hasConsented, setHasConsented] = useState(false);
+    const [lastMessageSentAt, setLastMessageSentAt] = useState<number>(0);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const visitorId = useRef(getOrCreateVisitorId());
@@ -57,6 +61,10 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
     // Track visitor metrics (scroll depth & clicks)
     useEffect(() => {
         if (!currentSession?.id) return;
+
+        // GDPR: Respect privacy settings and consent
+        if (config?.gdpr_disable_tracking) return;
+        if (config?.gdpr_show_consent && !hasConsented) return;
 
         let maxScroll = 0;
         let clickCount = 0;
@@ -123,6 +131,17 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
             }
         };
         loadConfig();
+
+        // Join presence for this visitor
+        presenceService.joinPresence(visitorId.current, {
+            name: visitorName || 'Anonymous Visitor',
+            role: 'visitor',
+            current_page: window.location.href
+        }, () => { });
+
+        return () => {
+            presenceService.leavePresence();
+        };
     }, [forceGlobalConfig, publicTenantId]);
 
     // Communicate with parent window (for iframe mode)
@@ -218,8 +237,12 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
             if (session) {
                 setCurrentSession(session);
                 setShowPreChat(false);
+                setErrorMessage(null);
                 loadChatHistory(session.id);
             }
+        } catch (error: any) {
+            console.error('[Widget] Failed to start chat:', error);
+            setErrorMessage(error.message || 'Failed to start conversation. Please try again later.');
         } finally {
             setIsLoading(false);
         }
@@ -229,8 +252,22 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
         e.preventDefault();
         if (!messageInput.trim() || !currentSession || connectionStatus !== 'connected') return;
 
+        // Clear typing status
+        presenceService.updatePresence({ is_typing: false });
+
+        // UI-side Throttling
+        const now = Date.now();
+        const throttleMs = (config?.message_throttle_seconds || 2) * 1000;
+        if (now - lastMessageSentAt < throttleMs) {
+            setErrorMessage(`Please wait a moment before sending another message.`);
+            setTimeout(() => setErrorMessage(null), 3000);
+            return;
+        }
+
         const content = messageInput;
         setMessageInput('');
+        setLastMessageSentAt(now);
+        setErrorMessage(null);
 
         // Optimistic update
         const tempId = Date.now().toString();
@@ -242,12 +279,22 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
             senderName: visitorName || 'You'
         }]);
 
-        await globalChatService.sendMessage({
-            session_id: currentSession.id,
-            content,
-            sender_type: 'visitor',
-            sender_name: visitorName || 'Visitor'
-        });
+        try {
+            const { error } = await globalChatService.sendMessage({
+                session_id: currentSession.id,
+                content,
+                sender_type: 'visitor',
+                sender_name: visitorName || 'Visitor'
+            });
+
+            if (error) throw error;
+        } catch (error: any) {
+            console.error('[Widget] Failed to send message:', error);
+            setErrorMessage(error.message || 'Failed to send message. You might be sending too fast.');
+            // Remove the optimistically added message on failure
+            setMessages(prev => prev.filter(m => m.id !== tempId));
+            return; // Don't proceed to AI if send failed
+        }
 
         // AI Response Logic - Only respond if:
         // 1. AI is enabled
@@ -269,15 +316,7 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
             history.push({ role: 'user', content });
 
             try {
-                const selectedApiKey =
-                    config.ai_provider === 'openai' ? (config.openai_api_key || '') :
-                        config.ai_provider === 'anthropic' ? (config.anthropic_api_key || '') :
-                            config.ai_provider === 'mistral' ? (config.mistral_api_key || '') :
-                                config.ai_provider === 'deepseek' ? (config.deepseek_api_key || '') :
-                                    config.ai_provider === 'openrouter' ? (config.openrouter_api_key || '') :
-                                        (config.ai_api_key || '');
-
-                console.log('[Widget] API Key selected for provider:', config.ai_provider, 'Present:', !!selectedApiKey);
+                console.log('[AI Service] Calling AI proxy with tenant_id:', config.tenant_id);
 
                 const aiResponse = await aiService.getAIResponse({
                     message: content,
@@ -285,7 +324,7 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
                     instructions: config.ai_knowledge_base || 'You are a helpful customer support assistant.',
                     provider: config.ai_provider || 'gemini',
                     modelName: config.ai_model,
-                    apiKey: selectedApiKey
+                    tenant_id: forceGlobalConfig ? null : (publicTenantId || config?.tenant_id)
                 });
 
                 console.log('[Widget] AI Response received:', aiResponse?.substring(0, 100));
@@ -419,19 +458,53 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
                                         />
                                     </div>
                                 )}
+
+                                {config?.gdpr_show_consent && (
+                                    <div className="flex items-start gap-3 bg-slate-800/50 p-3 rounded-lg border border-slate-700/50">
+                                        <input
+                                            id="gdpr-consent"
+                                            type="checkbox"
+                                            checked={hasConsented}
+                                            onChange={(e) => setHasConsented(e.target.checked)}
+                                            className="mt-1 w-4 h-4 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <label htmlFor="gdpr-consent" className="text-[11px] text-slate-400 leading-relaxed cursor-pointer select-none">
+                                            {config.gdpr_consent_text || 'I agree to the processing of my personal data for support purposes.'}
+                                        </label>
+                                    </div>
+                                )}
+
                                 <button
                                     type="submit"
-                                    disabled={isLoading}
+                                    disabled={isLoading || (config?.gdpr_show_consent && !hasConsented)}
                                     style={{ backgroundColor: config?.primary_color || '#2563eb' }}
                                     className="w-full text-white font-bold py-4 rounded-xl shadow-lg hover:opacity-90 transition-all disabled:opacity-50 mt-4"
                                 >
                                     {isLoading ? 'Starting...' : 'Start Conversation'}
                                 </button>
+
+                                {config?.gdpr_show_disclaimer && (
+                                    <p className="text-[10px] text-center text-slate-500 mt-4 leading-relaxed px-4">
+                                        {config.gdpr_disclaimer_text}
+                                    </p>
+                                )}
+
+                                {errorMessage && (
+                                    <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 animate-in shake duration-300">
+                                        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                                        <p className="text-[11px] text-red-400 leading-tight">{errorMessage}</p>
+                                    </div>
+                                )}
                             </form>
                         </div>
                     ) : (
                         <>
                             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-slate-900/50">
+                                {errorMessage && (
+                                    <div className="sticky top-0 z-10 mx-auto mb-2 p-2 bg-red-500/90 text-white text-[10px] font-bold rounded shadow-lg animate-in slide-in-from-top-4">
+                                        {errorMessage}
+                                    </div>
+                                )}
                                 {messages.map((msg, i) => (
                                     <div key={i} className={`flex ${msg.sender === 'visitor' ? 'justify-end' : 'justify-start'}`}>
                                         <div className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${msg.sender === 'visitor'
@@ -483,6 +556,11 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
                                         onChange={(e) => setMessageInput(e.target.value)}
                                         placeholder="Type your message..."
                                         className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-4 pr-12 py-3 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        onKeyDown={() => {
+                                            presenceService.updatePresence({ is_typing: true });
+                                            // Reset typing after 2s of inactivity
+                                            setTimeout(() => presenceService.updatePresence({ is_typing: false }), 2000);
+                                        }}
                                     />
                                     <button
                                         type="submit"

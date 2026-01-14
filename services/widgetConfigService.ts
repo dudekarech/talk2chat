@@ -127,6 +127,22 @@ export interface WidgetConfig {
     emoji_picker: boolean;
     message_character_limit: number;
 
+    // GDPR & Privacy
+    gdpr_show_consent: boolean;
+    gdpr_consent_text: string;
+    gdpr_show_disclaimer: boolean;
+    gdpr_disclaimer_text: string;
+    gdpr_disable_tracking: boolean;
+    retention_period_days: number;
+    privacy_hide_ip: boolean;
+    privacy_mask_data: boolean;
+
+    // Bot Protection
+    captcha_site_key?: string;
+    captcha_secret_key?: string;
+    max_sessions_per_hour: number;
+    message_throttle_seconds: number;
+
     updated_at: string;
 }
 
@@ -168,9 +184,25 @@ class WidgetConfigService {
 
             console.log('[WidgetConfig] Getting config for tenantId:', tenantId);
 
+            // SECURITY: Never fetch secret AI keys in public calls
+            // Only fetch non-sensitive UI/Behavior settings
+            const PUBLIC_COLUMNS = `
+                id, tenant_id, config_key, primary_color, background_color, position, 
+                widget_shape, team_name, welcome_message, pre_chat_message, auto_open, 
+                auto_open_delay, auto_open_on_scroll, scroll_percentage, show_on_pages, 
+                hide_on_mobile, sound_notifications, require_name, require_email, 
+                custom_css, seasonal_theme, ai_enabled, ai_provider, ai_model, 
+                ai_temperature, ai_auto_respond, ai_greeting, ai_smart_suggestions, 
+                ai_sentiment_analysis, ai_language_detection, ai_knowledge_base,
+                track_visitors, gdpr_show_consent, gdpr_consent_text, gdpr_show_disclaimer,
+                gdpr_disclaimer_text, gdpr_disable_tracking, retention_period_days,
+                privacy_hide_ip, privacy_mask_data, captcha_site_key, max_sessions_per_hour,
+                message_throttle_seconds, updated_at
+            `;
+
             let query = supabase
                 .from('global_widget_config')
-                .select('*');
+                .select(PUBLIC_COLUMNS);
 
             if (tenantId) {
                 // TENANT: Get configuration for specific tenant
@@ -226,7 +258,7 @@ class WidgetConfigService {
 
             const { data, error } = await supabase
                 .from('global_widget_config')
-                .select('*')
+                .select('*') // Revert: Public config should NOT expose keys.
                 .eq('config_key', 'global_widget')
                 .is('tenant_id', null)
                 .maybeSingle();
@@ -241,13 +273,60 @@ class WidgetConfigService {
                 return this.createDefaultConfig(null);
             }
 
-            console.log('[WidgetConfig] Global config loaded:', data);
+            console.log('[WidgetConfig] Global config loaded (public safe)');
             return { config: data as WidgetConfig, error: null };
         } catch (err) {
             console.error('[WidgetConfig] Exception fetching global config:', err);
             return { config: null, error: err };
         }
     }
+
+    /**
+     * Get FULL configuration for Admin Dashboard (includes secrets)
+     */
+    async getAdminConfig(tenantIdOverride?: string | null): Promise<{ config: WidgetConfig | null; error: any }> {
+        try {
+            // Use override if provided, otherwise try to get from current user session
+            const tenantId = tenantIdOverride !== undefined ? tenantIdOverride : await this.getTenantId();
+
+            console.log('[WidgetConfig] Getting ADMIN config for use:', tenantId);
+
+            // ADMIN: Fetch EVERYTHING (including keys)
+            let query = supabase
+                .from('global_widget_config')
+                .select('*');
+
+            if (tenantId) {
+                query = query.eq('tenant_id', tenantId);
+            } else {
+                query = query.eq('config_key', 'global_widget').is('tenant_id', null);
+            }
+
+            const { data, error } = await query.maybeSingle();
+
+            if (error) {
+                if (error.code === 'PGRST116') {
+                    console.log('[WidgetConfig] No admin config found, creating default');
+                    return this.createDefaultConfig(tenantId);
+                }
+                console.error('[WidgetConfig] Error fetching admin config:', error);
+                return { config: null, error };
+            }
+
+            if (!data) {
+                // Fallback to create if missing
+                console.log('[WidgetConfig] No admin data found, creating default');
+                return this.createDefaultConfig(tenantId || null);
+            }
+
+            console.log('[WidgetConfig] Admin Config loaded (with secrets)');
+            return { config: data as WidgetConfig, error: null };
+        } catch (err) {
+            console.error('[WidgetConfig] Exception fetching admin config:', err);
+            return { config: null, error: err };
+        }
+    }
+
 
     /**
      * Create default configuration
@@ -304,6 +383,39 @@ IMPORTANT: Your goal is to generate leads. If a user seems interested, kindly as
             console.error('[WidgetConfig] Exception creating default config:', err);
             return { config: null, error: err };
         }
+    }
+
+    /**
+     * Get AI Usage stats for a tenant
+     */
+    async getAIUsageStats(): Promise<{ stats: any[]; error: any }> {
+        const tenantId = await this.getTenantId();
+        if (!tenantId) return { stats: [], error: 'Not authenticated' };
+
+        const { data, error } = await supabase
+            .from('ai_usage_logs')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .order('created_at', { ascending: false })
+            .limit(100);
+
+        return { stats: data || [], error };
+    }
+
+    /**
+     * Get Tenant Balance
+     */
+    async getTenantBalance(): Promise<{ balance: number; error: any }> {
+        const tenantId = await this.getTenantId();
+        if (!tenantId) return { balance: 0, error: 'Not authenticated' };
+
+        const { data, error } = await supabase
+            .from('tenants')
+            .select('ai_credits_balance')
+            .eq('id', tenantId)
+            .single();
+
+        return { balance: data?.ai_credits_balance || 0, error };
     }
 
     /**

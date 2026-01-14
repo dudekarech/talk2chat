@@ -95,6 +95,7 @@ export interface WidgetConfig {
     mistral_api_key?: string;
     deepseek_api_key?: string;
     ai_knowledge_base?: string;
+    tenant_id?: string | null;
 }
 
 // Realtime Service Class
@@ -281,7 +282,7 @@ class GlobalChatRealtimeService {
     async sendMessage(data: {
         session_id: string;
         content: string;
-        sender_type: 'visitor' | 'agent' | 'system';
+        sender_type: 'visitor' | 'agent' | 'system' | 'ai';
         sender_id?: string;
         sender_name: string;
     }): Promise<{ message: ChatMessage | null; error: any }> {
@@ -583,16 +584,15 @@ class GlobalChatRealtimeService {
             .map(m => `${m.sender_name}: ${m.content}`)
             .join('\n');
 
-        // Get API Key (try to find any available key in widget config)
+        // Fetch widget config to get tenant setting
         const { config } = await this.getWidgetConfig();
-        const apiKey = config?.ai_api_key || config?.openrouter_api_key || (window as any).GEMINI_API_KEY;
+        const tenant_id = config?.tenant_id || null;
 
-        if (!apiKey) {
-            console.warn('[Realtime] No API Key found for AI enrichment');
-            return;
-        }
-
-        const analysis = await aiService.analyzeChatTranscript(transcript, apiKey);
+        // Use AI Proxy with the session's tenant_id
+        const analysis = await aiService.analyzeChatTranscript(
+            transcript,
+            tenant_id // Pass tenant_id for secure server-side key fetching
+        );
 
         // Save enrichment data
         await this.updateSession(sessionId, {

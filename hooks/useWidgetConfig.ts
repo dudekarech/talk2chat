@@ -29,7 +29,7 @@ const camelToSnake = (obj: any): any => {
     return obj;
 };
 
-export function useWidgetConfig(forceGlobal: boolean = false) {
+export function useWidgetConfig(forceGlobal: boolean = false, includeSecrets: boolean = false) {
     const [config, setConfig] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -39,13 +39,15 @@ export function useWidgetConfig(forceGlobal: boolean = false) {
     // Load configuration on mount
     useEffect(() => {
         loadConfig();
-    }, [forceGlobal]);
+    }, [forceGlobal, includeSecrets]);
 
     const loadConfig = async () => {
         setIsLoading(true);
         try {
-            // If forceGlobal is true, tell service to get config with NULL tenantId
-            const { config: dbConfig, error } = await widgetConfigService.getConfig(forceGlobal ? null : undefined);
+            // Determine which fetch method to use based on includeSecrets
+            const { config: dbConfig, error } = includeSecrets
+                ? await widgetConfigService.getAdminConfig(forceGlobal ? null : undefined)
+                : await widgetConfigService.getConfig(forceGlobal ? null : undefined);
 
             if (error) {
                 console.error('Error loading widget config:', error);
@@ -284,5 +286,21 @@ function getDefaultConfig() {
         allowedFileTypes: ['image/*', 'application/pdf'],
         emojiPicker: true,
         messageCharacterLimit: 1000,
+
+        // GDPR & Privacy
+        gdprShowConsent: false,
+        gdprConsentText: 'I agree to the processing of my personal data for support purposes.',
+        gdprShowDisclaimer: false,
+        gdprDisclaimerText: 'We value your privacy. Your data is processed securely and only used for providing support.',
+        gdprDisableTracking: false,
+        retentionPeriodDays: 0,
+        privacyHideIp: false,
+        privacyMaskData: false,
+
+        // Bot Protection
+        captchaSiteKey: '',
+        captchaSecretKey: '',
+        maxSessionsPerHour: 5,
+        messageThrottleSeconds: 2,
     };
 }

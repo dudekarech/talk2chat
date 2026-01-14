@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { supabase } from "./supabaseClient";
 
 export class AIService {
     /**
@@ -45,66 +46,74 @@ export class AIService {
         history: any[];
         instructions: string;
         provider: string;
-        apiKey: string;
+        apiKey?: string;
         modelName?: string;
+        tenant_id?: string | null;
     }): Promise<string> {
-        const { message, history, instructions, provider, apiKey, modelName } = payload;
+        const { message, instructions, provider, modelName } = payload;
 
         console.log('[AI Service] ========== AI REQUEST ==========');
         console.log('[AI Service] Provider:', provider);
         console.log('[AI Service] Model:', modelName);
-        console.log('[AI Service] API Key present:', !!apiKey);
-        console.log('[AI Service] API Key length:', apiKey?.length || 0);
-        console.log('[AI Service] Instructions:', instructions?.substring(0, 100) || '(none)');
-        console.log('[AI Service] Message:', message);
+        console.log('[AI Service] Instructions:', instructions?.substring(0, 50) || '(none)');
 
-        if (!apiKey || apiKey.trim() === '') {
-            console.error('[AI Service] ❌ No API key provided');
-            return "AI API Key is missing. Please configure it in the Widget Settings.";
-        }
+        // SECURITY UPDATE: Always route through the secure backend proxy.
+        // This ensures keys are never exposed and all requests are logged/managed centrally.
+        console.log('[AI Service] Routing through secure backend proxy...');
+        return this.getAIResponseProxy(payload);
+    }
 
+    /**
+     * Calls the secure Supabase Edge Function proxy
+     */
+    private async getAIResponseProxy(payload: any): Promise<string> {
         try {
-            let response: string;
+            const { data, error } = await supabase.functions.invoke('ai-chat', {
+                body: payload
+            });
 
-            if (provider === 'gemini') {
-                console.log('[AI Service] Calling Gemini...');
-                response = await this.generateGeminiResponse(message, history, instructions, apiKey, modelName);
-            }
-            else if (provider === 'openai') {
-                console.log('[AI Service] Calling OpenAI...');
-                response = await this.generateOpenAIResponse(message, history, instructions, apiKey, modelName);
-            }
-            else if (provider === 'anthropic') {
-                console.log('[AI Service] Calling Anthropic...');
-                response = await this.generateAnthropicResponse(message, history, instructions, apiKey, modelName);
-            }
-            else if (provider === 'mistral' || provider === 'deepseek') {
-                console.log(`[AI Service] Calling ${provider}...`);
-                response = await this.generateGenericOpenAICompatibleResponse(message, history, instructions, apiKey, modelName, provider);
-            }
-            else if (provider === 'openrouter') {
-                const effectiveModel = modelName || 'google/gemini-2.0-flash-001';
-                console.log(`[AI Service] Calling OpenRouter with model: ${effectiveModel}`);
-                response = await this.generateOpenRouterResponse(message, history, instructions, apiKey, effectiveModel);
-            }
-            else {
-                console.error(`[AI Service] ❌ Unsupported provider: ${provider}`);
-                return "Support for this AI provider is coming soon. A human will assist you shortly.";
+            if (error) throw error;
+            if (data.error) throw new Error(data.error);
+
+            return data.response || "No response from AI proxy.";
+        } catch (error: any) {
+            console.error('[AI Service] Proxy Error Details:', error);
+
+            let message = 'The AI service is temporarily unavailable.';
+
+            // Try to extract error message from Supabase FunctionsHttpError
+            if (error.context && error.context.body) {
+                try {
+                    const body = error.context.body;
+                    let bodyJson: any;
+
+                    // Handle null/undefined body safely
+                    if (!body) {
+                        message = error.message || 'Unknown network error';
+                    }
+                    // Handle string body
+                    else if (typeof body === 'string') {
+                        try { bodyJson = JSON.parse(body); } catch { bodyJson = { message: body }; }
+                    }
+                    // Handle Blob/Response-like body
+                    else if (typeof body.text === 'function') {
+                        const text = await body.text();
+                        try { bodyJson = JSON.parse(text); } catch { bodyJson = { message: text }; }
+                    }
+                    // Handle plain object body
+                    else if (typeof body === 'object') {
+                        bodyJson = body;
+                    }
+
+                    message = bodyJson?.error?.message || bodyJson?.error || bodyJson?.message || message;
+                } catch (e) {
+                    console.warn('[AI Service] Failed to parse error body:', e);
+                }
+            } else if (error.message) {
+                message = error.message;
             }
 
-            // Validate response
-            if (!response || response.trim() === '') {
-                console.error('[AI Service] ❌ Empty response received from AI');
-                return "I'm having trouble generating a response. A human agent will assist you shortly.";
-            }
-
-            console.log('[AI Service] ✅ Response received:', response.substring(0, 100) + '...');
-            return response;
-
-        } catch (error) {
-            console.error(`[AI Service] ❌ ${provider} Error:`, error);
-            console.error('[AI Service] Error details:', JSON.stringify(error, null, 2));
-            return "I'm having trouble thinking right now. A human agent will be with you shortly.";
+            return `AI Service Error: ${message}`;
         }
     }
 
@@ -270,13 +279,13 @@ export class AIService {
     /**
      * Analyze a full chat transcript for summaries and leads
      */
-    async analyzeChatTranscript(transcript: string, apiKey: string): Promise<{
+    async analyzeChatTranscript(transcript: string, tenant_id: string | null = null, apiKey?: string): Promise<{
         summary: string;
         sentiment: string;
         leads: any;
         category: string;
     }> {
-        if (!apiKey) throw new Error("API Key required for analysis");
+        if (!tenant_id && !apiKey) throw new Error("Tenant ID or API Key required for analysis");
 
         const prompt = `
             Analyze the following chat transcript between a support assistant and a visitor.
@@ -299,6 +308,7 @@ export class AIService {
                 instructions: "You are a data analyst. Always respond in valid JSON format.",
                 provider: 'gemini', // Defaulting to gemini for analysis
                 apiKey: apiKey,
+                tenant_id: tenant_id,
                 modelName: 'gemini-1.5-flash'
             });
 

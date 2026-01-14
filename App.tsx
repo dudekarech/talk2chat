@@ -25,6 +25,12 @@ import { TenantDashboardHome } from './pages/Tenant/TenantDashboardHome';
 import { TenantWidgetConfiguration } from './pages/Tenant/TenantWidgetConfiguration';
 import { SupportTickets } from './pages/Tenant/SupportTickets';
 import { TenantNotifications } from './pages/Tenant/Notifications';
+import { Settings as TenantSettings } from './pages/Tenant/Settings';
+import { Privacy } from './pages/Privacy';
+import { Terms } from './pages/Terms';
+import { Cookies } from './pages/Cookies';
+import { About } from './pages/About';
+import { Careers } from './pages/Careers';
 import { WidgetEmbedPage } from './pages/WidgetEmbedPage';
 
 const App: React.FC = () => {
@@ -42,6 +48,13 @@ const App: React.FC = () => {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/app" element={<MainApp />} />
 
+        {/* Static Pages */}
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/cookies" element={<Cookies />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/careers" element={<Careers />} />
+
         {/* Role-based dashboard redirect */}
         <Route path="/dashboard" element={<RoleBasedRedirect />} />
 
@@ -54,7 +67,7 @@ const App: React.FC = () => {
           <Route path="widget" element={<TenantWidgetConfiguration />} />
           <Route path="team" element={<Users />} />
           <Route path="chats" element={<GlobalSharedInbox isGlobalMode={false} />} />
-          <Route path="settings" element={<TenantDashboardHome />} /> {/* Placeholder */}
+          <Route path="settings" element={<TenantSettings />} />
           <Route path="analytics" element={<TenantDashboardHome />} /> {/* Placeholder */}
           <Route path="support" element={<SupportTickets />} />
           <Route path="notifications" element={<TenantNotifications />} />

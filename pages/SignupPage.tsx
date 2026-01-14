@@ -92,6 +92,11 @@ export const SignupPage: React.FC = () => {
 
             // Step 2: Handle tenant and profile creation
             if (inviteId && inviteData) {
+                // Verify email matches the invite (Double-check in frontend, enforced in DB)
+                if (formData.email.toLowerCase() !== inviteData.email.toLowerCase()) {
+                    throw new Error(`This invite was sent to ${inviteData.email}. Please use that email to signup.`);
+                }
+
                 // Update existing invite profile
                 const { error: updateError } = await supabase
                     .from('user_profiles')
