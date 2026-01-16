@@ -31,6 +31,22 @@ const getOrCreateVisitorId = (): string => {
     return visitorId;
 };
 
+// Define the Global API Interface
+interface TalkChatAPI {
+    open: () => void;
+    close: () => void;
+    toggle: () => void;
+    identify: (userData: { name?: string; email?: string; id?: string }) => void;
+    trackEvent: (eventName: string, properties?: any) => void;
+    getState: () => { isOpen: boolean; isMinimized: boolean; visitorId: string };
+}
+
+declare global {
+    interface Window {
+        talkChat?: TalkChatAPI;
+    }
+}
+
 export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalConfig = false, publicTenantId }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
@@ -109,6 +125,75 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
         };
     }, [currentSession?.id]);
 
+    // ========== EXPOSE GLOBAL API ==========
+    useEffect(() => {
+        // Expose API to window for external scripts (Shopify, WordPress, etc.)
+        window.talkChat = {
+            open: () => setIsOpen(true),
+            close: () => setIsOpen(false),
+            toggle: () => setIsOpen(prev => !prev),
+
+            identify: (userData) => {
+                console.log('[Widget API] Identifying user:', userData);
+                if (userData.name) setVisitorName(userData.name);
+                if (userData.email) setVisitorEmail(userData.email);
+                // In a real implementation, we would also update the ongoing session here
+            },
+
+            trackEvent: (eventName, properties) => {
+                console.log(`[Widget API] Track Event: ${eventName}`, properties);
+
+                // If we have an active session, log this to the backend
+                if (currentSession?.id) {
+                    const CART_EVENTS = ['cart_add', 'cart_remove', 'cart_view', 'checkout_start', 'purchase'];
+
+                    if (CART_EVENTS.includes(eventName)) {
+                        // E-commerce Event -> Log to shopify_cart_events
+                        globalChatService.trackCartEvent({
+                            tenant_id: currentSession.tenant_id || config?.tenant_id || null,
+                            visitor_id: visitorId.current,
+                            session_id: currentSession.id,
+                            event_type: eventName as any,
+                            cart_total: properties?.cart_total || properties?.totalPrice || 0,
+                            product_id: properties?.product_id || properties?.productId,
+                            product_name: properties?.product_name || properties?.productName,
+                            price: properties?.price,
+                            quantity: properties?.quantity,
+                            currency: properties?.currency,
+                            metadata: properties
+                        }).catch(console.error);
+                    } else {
+                        // Generic Event -> Log as metadata
+                        globalChatService.updateVisitorMetadata(currentSession.id, {
+                            [`last_event_${eventName}`]: new Date().toISOString(),
+                            ...properties
+                        });
+                    }
+                } else {
+                    console.log('[Widget API] Event tracked (no specific session yet). Queued for next session.');
+                    // Optional: Queue these events to send when session starts
+                }
+            },
+
+            getState: () => ({
+                isOpen,
+                isMinimized,
+                visitorId: visitorId.current
+            })
+        };
+
+        // Dispatch ready event
+        window.dispatchEvent(new Event('talkchat:ready'));
+
+        return () => {
+            delete window.talkChat;
+        };
+    }, [isOpen, isMinimized, currentSession]); // Re-bind when state changes to capture latest closures
+
+    // ... rest of component ...
+
+
+
     // Load configuration
     useEffect(() => {
         const loadConfig = async () => {
@@ -153,7 +238,27 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
         } else {
             window.parent.postMessage({ type: 'TKC_WIDGET_CLOSE' }, '*');
         }
-    }, [isOpen, isMinimized]);
+
+        const handleParentMessage = (event: MessageEvent) => {
+            if (event.data.type === 'TKC_VISITOR_CLICK' && currentSession) {
+                // If heatmap is enabled in config (use camelCase since hook converts it)
+                if (config?.heatmapEnabled) {
+                    globalChatService.logVisitorClick({
+                        session_id: currentSession.id,
+                        tenant_id: currentSession.tenant_id,
+                        page_url: event.data.data.url,
+                        x_pct: event.data.data.x_pct,
+                        y_pct: event.data.data.y_pct,
+                        viewport_width: event.data.data.viewport_width,
+                        viewport_height: event.data.data.viewport_height
+                    });
+                }
+            }
+        };
+
+        window.addEventListener('message', handleParentMessage);
+        return () => window.removeEventListener('message', handleParentMessage);
+    }, [isOpen, isMinimized, currentSession, config]);
 
     // Subscribe to real-time updates when session is active
     useEffect(() => {
@@ -324,29 +429,65 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
                     instructions: config.ai_knowledge_base || 'You are a helpful customer support assistant.',
                     provider: config.ai_provider || 'gemini',
                     modelName: config.ai_model,
-                    tenant_id: forceGlobalConfig ? null : (publicTenantId || config?.tenant_id)
+                    tenant_id: forceGlobalConfig ? null : (publicTenantId || config?.tenant_id),
+                    session_id: currentSession.id
                 });
 
                 console.log('[Widget] AI Response received:', aiResponse?.substring(0, 100));
 
+                // ========== ENHANCED ERROR HANDLING ==========
+                // Determine if response is an error and create user-friendly message
+                let finalResponse = aiResponse;
+
+                if (aiResponse && aiResponse.includes('AI Service Error:')) {
+                    console.error('[Widget] ❌ AI Error Detected:', aiResponse);
+
+                    // Parse the specific error type for user-friendly messaging
+                    const errorMessage = aiResponse.replace('AI Service Error: ', '').trim();
+
+                    // Map technical errors to friendly messages
+                    if (errorMessage.includes('Missing API key') ||
+                        errorMessage.includes('AI Configuration missing') ||
+                        errorMessage.includes('Missing Configuration')) {
+                        finalResponse = "I'm currently unavailable. The system administrator needs to configure the AI service. Please try again later or contact support.";
+                    }
+                    else if (errorMessage.includes('Credit') || errorMessage.includes('credits')) {
+                        finalResponse = "I'm temporarily unavailable due to system maintenance. Our team has been notified. Please try again in a few minutes or reach out to support for immediate assistance.";
+                    }
+                    else if (errorMessage.includes('Rate limit')) {
+                        finalResponse = "You're chatting a bit too fast! Please wait a moment before sending your next message. 😊";
+                    }
+                    else if (errorMessage.includes('temporarily unavailable')) {
+                        finalResponse = "I'm experiencing technical difficulties at the moment. Our team has been notified. Please try again in a few minutes, and we'll be happy to help! 🔧";
+                    }
+                    else {
+                        // Generic friendly error
+                        finalResponse = "I'm having trouble responding right now. Please try again in a moment, or feel free to leave your question and a team member will get back to you soon! 💬";
+                    }
+
+                    // Log for admin diagnostics
+                    console.error('[Widget] 🔧 ADMIN DIAGNOSTIC - Original Error:', errorMessage);
+                    console.error('[Widget] 🔧 ADMIN DIAGNOSTIC - User sees:', finalResponse);
+                }
+
                 // Validate and send AI response
-                if (aiResponse && aiResponse.trim() !== '' && !aiResponse.includes("API Key is missing")) {
+                if (finalResponse && finalResponse.trim() !== '' && !finalResponse.includes("API Key is missing")) {
                     console.log('[Widget] ✅ Sending AI response to database');
                     await globalChatService.sendMessage({
                         session_id: currentSession.id,
-                        content: aiResponse,
+                        content: finalResponse,
                         sender_type: 'ai',
                         sender_name: config.team_name || 'AI Assistant'
                     });
-                } else if (!aiResponse || aiResponse.trim() === '') {
+                } else if (!finalResponse || finalResponse.trim() === '') {
                     console.error('[Widget] ❌ Empty AI response, not sending');
-                } else if (aiResponse.includes("API Key is missing")) {
+                } else if (finalResponse.includes("API Key is missing")) {
                     console.warn('[Widget] ⚠️ AI Response skipped: Missing API Key');
                 } else {
-                    console.log('[Widget] ℹ️ AI response contains error message, sending as-is');
+                    console.log('[Widget] ℹ️ Fallback: Sending response as-is');
                     await globalChatService.sendMessage({
                         session_id: currentSession.id,
-                        content: aiResponse,
+                        content: finalResponse,
                         sender_type: 'system',
                         sender_name: 'System'
                     });
@@ -553,13 +694,24 @@ export const GlobalChatWidget: React.FC<GlobalChatWidgetProps> = ({ forceGlobalC
                                     <input
                                         type="text"
                                         value={messageInput}
-                                        onChange={(e) => setMessageInput(e.target.value)}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setMessageInput(val);
+
+                                            // Only broadcast if enabled in config
+                                            if (currentSession?.id && config?.typing_preview_enabled !== false) {
+                                                globalChatService.broadcastTyping(currentSession.id, val);
+                                            }
+                                        }}
                                         placeholder="Type your message..."
                                         className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-4 pr-12 py-3 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                         onKeyDown={() => {
                                             presenceService.updatePresence({ is_typing: true });
-                                            // Reset typing after 2s of inactivity
-                                            setTimeout(() => presenceService.updatePresence({ is_typing: false }), 2000);
+                                            // Reset typing indicator after 2s of inactivity
+                                            if ((window as any).typingTimeout) clearTimeout((window as any).typingTimeout);
+                                            (window as any).typingTimeout = setTimeout(() => {
+                                                presenceService.updatePresence({ is_typing: false });
+                                            }, 2000);
                                         }}
                                     />
                                     <button

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LifeBuoy, MessageSquare, CheckCircle2, Clock, AlertCircle, Search, Filter, Loader2, Building, User } from 'lucide-react';
+import { LifeBuoy, MessageSquare, CheckCircle, Clock, AlertCircle, Search, Filter, Loader2, Building, User } from 'lucide-react';
 import { notificationService, SupportTicket } from '../../services/notificationService';
 import { supabase } from '../../services/supabaseClient';
 

@@ -7,7 +7,7 @@ import {
     Globe,
     Save,
     AlertCircle,
-    CheckCircle2,
+    CheckCircle,
     Eye,
     EyeOff,
     UserCircle,
@@ -23,7 +23,7 @@ import {
 import { supabase } from '../../services/supabaseClient';
 
 export const Settings: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications' | 'workspace'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications' | 'workspace' | 'channels'>('profile');
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
@@ -50,6 +50,13 @@ export const Settings: React.FC = () => {
         confirm: ''
     });
     const [showPassword, setShowPassword] = useState(false);
+
+    // Channels State
+    const [integrations, setIntegrations] = useState({
+        whatsapp: { enabled: false, phoneNumberId: '', apiKey: '', verifyToken: '' },
+        instagram: { enabled: false, pageId: '', accessToken: '' },
+        facebook: { enabled: false, pageId: '', accessToken: '' }
+    });
 
     useEffect(() => {
         loadData();
@@ -89,6 +96,17 @@ export const Settings: React.FC = () => {
                         balance: tenantData.ai_credits_balance || 0,
                         limit: tenantData.ai_usage_limit_monthly || 0
                     });
+                }
+
+                // Load Integrations from Widget Config
+                const { data: widgetData } = await supabase
+                    .from('global_widget_config')
+                    .select('integrations')
+                    .eq('tenant_id', userData.tenant_id)
+                    .single();
+
+                if (widgetData?.integrations) {
+                    setIntegrations(widgetData.integrations);
                 }
             }
         }
@@ -145,6 +163,37 @@ export const Settings: React.FC = () => {
         }
     };
 
+    const handleUpdateIntegrations = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setMessage(null);
+
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('Not authenticated');
+
+            const { data: userData } = await supabase
+                .from('user_profiles')
+                .select('tenant_id')
+                .eq('user_id', user.id)
+                .single();
+
+            if (!userData?.tenant_id) throw new Error('No tenant associated');
+
+            const { error } = await supabase
+                .from('global_widget_config')
+                .update({ integrations })
+                .eq('tenant_id', userData.tenant_id);
+
+            if (error) throw error;
+            setMessage({ type: 'success', text: 'Integrations updated successfully!' });
+        } catch (err: any) {
+            setMessage({ type: 'error', text: err.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -156,7 +205,7 @@ export const Settings: React.FC = () => {
                 {message && (
                     <div className={`flex items-center gap-3 px-5 py-3 rounded-2xl text-sm font-semibold animate-in slide-in-from-right-4 ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-lg shadow-emerald-500/10' : 'bg-red-500/10 text-red-400 border border-red-500/20 shadow-lg shadow-red-500/10'
                         }`}>
-                        {message.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                        {message.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
                         {message.text}
                     </div>
                 )}
@@ -195,6 +244,14 @@ export const Settings: React.FC = () => {
                 >
                     <Bell className="w-4 h-4" />
                     Alerts
+                </button>
+                <button
+                    onClick={() => setActiveTab('channels')}
+                    className={`flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === 'channels' ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/30' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                        }`}
+                >
+                    <Globe className="w-4 h-4" />
+                    Channels
                 </button>
             </div>
 
@@ -429,6 +486,141 @@ export const Settings: React.FC = () => {
                             ))}
                         </div>
                     </div>
+                )}
+
+                {activeTab === 'channels' && (
+                    <form onSubmit={handleUpdateIntegrations} className="p-10 space-y-10 animate-in slide-in-from-right-5">
+                        <div className="space-y-4">
+                            <h3 className="text-2xl font-black text-white flex items-center gap-3">
+                                <Globe className="w-8 h-8 text-blue-500" />
+                                Omnichannel Management
+                            </h3>
+                            <p className="text-slate-400 font-medium">Connect your Meta Business accounts to centralize your customer communication.</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                            {/* WhatsApp */}
+                            <div className="p-8 bg-slate-900/40 rounded-[2rem] border border-slate-700/50 space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-3 bg-emerald-500/10 rounded-2xl">
+                                            <MessageSquare className="w-6 h-6 text-emerald-500" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-white font-black">WhatsApp Business</h4>
+                                            <p className="text-[10px] text-slate-500 uppercase font-black">Official API Integration</p>
+                                        </div>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            className="sr-only peer"
+                                            checked={integrations.whatsapp.enabled}
+                                            onChange={(e) => setIntegrations({
+                                                ...integrations,
+                                                whatsapp: { ...integrations.whatsapp, enabled: e.target.checked }
+                                            })}
+                                        />
+                                        <div className="w-12 h-6 bg-slate-800 rounded-full peer peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-6"></div>
+                                    </label>
+                                </div>
+
+                                <div className={`space-y-4 transition-all duration-500 ${integrations.whatsapp.enabled ? 'opacity-100 pointer-events-auto' : 'opacity-30 pointer-events-none grayscale'}`}>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Phone Number ID</label>
+                                        <input
+                                            type="text"
+                                            value={integrations.whatsapp.phoneNumberId}
+                                            onChange={(e) => setIntegrations({ ...integrations, whatsapp: { ...integrations.whatsapp, phoneNumberId: e.target.value } })}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-emerald-500/40 focus:outline-none"
+                                            placeholder="1234567890..."
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Meta API System Token</label>
+                                        <input
+                                            type="password"
+                                            value={integrations.whatsapp.apiKey}
+                                            onChange={(e) => setIntegrations({ ...integrations, whatsapp: { ...integrations.whatsapp, apiKey: e.target.value } })}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-emerald-500/40 focus:outline-none"
+                                            placeholder="EAABw..."
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Webhook Verify Token</label>
+                                        <input
+                                            type="text"
+                                            value={integrations.whatsapp.verifyToken}
+                                            onChange={(e) => setIntegrations({ ...integrations, whatsapp: { ...integrations.whatsapp, verifyToken: e.target.value } })}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-emerald-500/40 focus:outline-none"
+                                            placeholder="your_secret_token"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Instagram */}
+                            <div className="p-8 bg-slate-900/40 rounded-[2rem] border border-slate-700/50 space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-3 bg-pink-500/10 rounded-2xl">
+                                            <Palette className="w-6 h-6 text-pink-500" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-white font-black">Instagram DM</h4>
+                                            <p className="text-[10px] text-slate-500 uppercase font-black">Social Commerce</p>
+                                        </div>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            className="sr-only peer"
+                                            checked={integrations.instagram.enabled}
+                                            onChange={(e) => setIntegrations({
+                                                ...integrations,
+                                                instagram: { ...integrations.instagram, enabled: e.target.checked }
+                                            })}
+                                        />
+                                        <div className="w-12 h-6 bg-slate-800 rounded-full peer peer-checked:bg-pink-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-6"></div>
+                                    </label>
+                                </div>
+
+                                <div className={`space-y-4 transition-all duration-500 ${integrations.instagram.enabled ? 'opacity-100 pointer-events-auto' : 'opacity-30 pointer-events-none grayscale'}`}>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Account ID</label>
+                                        <input
+                                            type="text"
+                                            value={integrations.instagram.pageId}
+                                            onChange={(e) => setIntegrations({ ...integrations, instagram: { ...integrations.instagram, pageId: e.target.value } })}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-pink-500/40 focus:outline-none"
+                                            placeholder="IG-123..."
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Access Token</label>
+                                        <input
+                                            type="password"
+                                            value={integrations.instagram.accessToken}
+                                            onChange={(e) => setIntegrations({ ...integrations, instagram: { ...integrations.instagram, accessToken: e.target.value } })}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-pink-500/40 focus:outline-none"
+                                            placeholder="EAABw..."
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="pt-8 border-t border-slate-700/30 flex justify-end">
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="group relative flex items-center gap-3 px-10 py-4 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-2xl font-black hover:shadow-2xl hover:shadow-blue-600/40 transition-all duration-300 active:scale-95 disabled:opacity-50"
+                            >
+                                <Save className="w-5 h-5 transition-transform group-hover:scale-125" />
+                                {loading ? 'DEPLOYING...' : 'UPDATE CHANNELS'}
+                            </button>
+                        </div>
+                    </form>
                 )}
             </div>
         </div>

@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { aiService } from '../../services/aiService';
+import { KBFile } from '../../types';
 import {
     Settings,
     Code,
@@ -32,7 +34,8 @@ import {
     Ghost,
     Rabbit,
     Sun,
-    TreePine
+    TreePine,
+    ShoppingBag
 } from 'lucide-react';
 import { useWidgetConfig } from '../../hooks/useWidgetConfig';
 import { TenantWidgetPreview } from '../../components/TenantWidgetPreview';
@@ -69,6 +72,7 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
     const [isSyncingKB, setIsSyncingKB] = useState(false);
     const [kbSyncError, setKbSyncError] = useState<string | null>(null);
     const [kbSyncSuccess, setKbSyncSuccess] = useState(false);
+    const kbInputRef = useRef<HTMLInputElement>(null);
 
     // Auto-hide success message after 3 seconds
     useEffect(() => {
@@ -95,8 +99,8 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
             setUsageStats(stats || []);
 
             // Also load KB stats
-            if (widgetConfig?.tenant_id) {
-                const stats = await knowledgeBaseService.getKnowledgeStats(widgetConfig.tenant_id);
+            if (widgetConfig?.tenantId !== undefined) {
+                const stats = await knowledgeBaseService.getKnowledgeStats(widgetConfig.tenantId);
                 setKbStats(stats);
             }
         } catch (error) {
@@ -107,8 +111,23 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
     };
 
     const handleSyncKnowledge = async () => {
-        if (!widgetConfig?.tenant_id || !widgetConfig.aiKnowledgeBase) {
-            setKbSyncError("Knowledge base content is required before syncing.");
+        // Use either tenantId (camelCase from UI) or tenant_id (snake_case fallback)
+        const activeTenantId = widgetConfig?.tenantId;
+
+        if (activeTenantId === undefined) {
+            setKbSyncError("Tenant context missing. Please reload the page.");
+            return;
+        }
+
+        if (!widgetConfig.aiKnowledgeBase && kbStats.count === 0) {
+            setKbSyncError("Please provide some knowledge content or upload files before syncing.");
+            return;
+        }
+
+        // If there is ONLY text in the textarea, we sync it. 
+        // If it's empty but they have files, 'Sync' doesn't do much for the text area but we can still 'success' it.
+        if (!widgetConfig.aiKnowledgeBase) {
+            setKbSyncSuccess(true);
             return;
         }
 
@@ -118,19 +137,53 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
 
         try {
             const result = await knowledgeBaseService.syncTextKnowledge(
-                widgetConfig.tenant_id,
+                activeTenantId,
                 widgetConfig.aiKnowledgeBase
             );
 
             if (result.success) {
                 setKbSyncSuccess(true);
-                const stats = await knowledgeBaseService.getKnowledgeStats(widgetConfig.tenant_id);
+                const stats = await knowledgeBaseService.getKnowledgeStats(activeTenantId);
                 setKbStats(stats);
             } else {
                 setKbSyncError(result.error?.message || "Sync failed. Ensure your AI proxy is configured.");
             }
         } catch (error: any) {
             setKbSyncError(error.message);
+        } finally {
+            setIsSyncingKB(false);
+        }
+    };
+
+    const handleFileUploadKB = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        const activeTenantId = widgetConfig?.tenantId;
+
+        if (!file || activeTenantId === undefined) return;
+
+        setIsSyncingKB(true);
+        setKbSyncError(null);
+
+        try {
+            const text = await file.text();
+
+            await aiService.ingestKnowledgeBase({
+                tenant_id: activeTenantId,
+                content: text,
+                filename: file.name,
+                metadata: { size: file.size, last_modified: file.lastModified }
+            });
+
+            // Refresh stats
+            const stats = await knowledgeBaseService.getKnowledgeStats(activeTenantId);
+            setKbStats(stats);
+            setKbSyncSuccess(true);
+
+            // Clear input
+            if (e.target) e.target.value = '';
+
+        } catch (error: any) {
+            setKbSyncError(`Upload failed: ${error.message}`);
         } finally {
             setIsSyncingKB(false);
         }
@@ -185,6 +238,7 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
     const sections = [
         { id: 'appearance', label: 'Appearance', icon: Palette },
         { id: 'installation', label: 'Installation', icon: Code },
+        { id: 'shopify', label: 'Shopify & E-commerce', icon: ShoppingBag },
         { id: 'content', label: 'Content & Messages', icon: MessageSquare },
         { id: 'behavior', label: 'Behavior', icon: Clock },
         { id: 'prechat', label: 'Pre-Chat Form', icon: FileText },
@@ -477,6 +531,34 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
                                             onChange={(checked) => setWidgetConfig({ ...widgetConfig, showTimestamps: checked })}
                                         />
                                     </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-white font-medium flex items-center gap-2">
+                                                Typing Preview (Pro)
+                                                <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-widest border border-blue-500/20">Live</span>
+                                            </p>
+                                            <p className="text-xs text-slate-500">See what guests type before they send</p>
+                                        </div>
+                                        <ToggleSwitch
+                                            checked={widgetConfig.typingPreviewEnabled !== false}
+                                            onChange={(checked) => setWidgetConfig({ ...widgetConfig, typingPreviewEnabled: checked })}
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-white font-medium flex items-center gap-2">
+                                                Behavioral Heatmap
+                                                <span className="text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-widest border border-purple-500/20">Pro</span>
+                                            </p>
+                                            <p className="text-xs text-slate-500">Record visitor clicks for visual site analysis</p>
+                                        </div>
+                                        <ToggleSwitch
+                                            checked={widgetConfig.heatmapEnabled === true}
+                                            onChange={(checked) => setWidgetConfig({ ...widgetConfig, heatmapEnabled: checked })}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -565,6 +647,117 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
                                     >
                                         Edit Appearance →
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* SHOPIFY SECTION */}
+                    {activeSection === 'shopify' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Shopify & E-commerce Integration</h3>
+                                <p className="text-slate-400">Turn your chat widget into an intelligent sales assistant.</p>
+                            </div>
+
+                            <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-6">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <ShoppingBag className="w-6 h-6 text-green-400" />
+                                    <h4 className="text-lg font-bold text-green-400">Shopify Ready 🛍️</h4>
+                                </div>
+                                <p className="text-sm text-green-200/80">
+                                    Our widget is pre-optimized for Shopify. Install the tracking script below to enable <strong>Cart Abandonment Recovery</strong> and <strong>Live Cart Viewing</strong> for your agents.
+                                </p>
+                            </div>
+
+                            {/* Step 1: Install Widget */}
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                                <div className="p-4 bg-slate-700/30 border-b border-slate-700 flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <Code className="w-4 h-4 text-purple-400" />
+                                        <span className="text-sm font-medium text-slate-200">1. Base Widget Script</span>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            const code = `<!-- TalkChat Widget -->\n<script>\n  (function(w,d,s,o,f,js,fjs){\n    w['TalkChat-Widget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};\n    js=d.createElement(s),fjs=d.getElementsByTagName(s)[0];\n    js.id=o;js.src=f;js.async=1;fjs.parentNode.insertBefore(js,fjs);\n  }(window,document,'script','tkc','${window.location.origin}/widget-loader.js'));\n  tkc('init', {\n    tenantId: '${widgetConfig.tenantId || 'global'}',\n    baseUrl: '${window.location.origin}'\n  });\n</script>`;
+                                            navigator.clipboard.writeText(code);
+                                            alert('Widget code copied!');
+                                        }}
+                                        className="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+                                    >
+                                        <Check className="w-3 h-3" />
+                                        Copy Code
+                                    </button>
+                                </div>
+                                <div className="p-6 bg-slate-950">
+                                    <pre className="text-sm font-mono text-purple-300 leading-relaxed overflow-x-auto whitespace-pre-wrap">
+                                        {`<!-- TalkChat Widget Embed Code -->
+<script>
+  (function(w,d,s,o,f,js,fjs){
+    w['TalkChat-Widget']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};
+    js=d.createElement(s),fjs=d.getElementsByTagName(s)[0];
+    js.id=o;js.src=f;js.async=1;fjs.parentNode.insertBefore(js,fjs);
+  }(window,document,'script','tkc','${window.location.origin}/widget-loader.js'));
+  tkc('init', {
+    tenantId: '${widgetConfig.tenantId || 'global'}',
+    baseUrl: '${window.location.origin}'
+  });
+</script>`}
+                                    </pre>
+                                </div>
+                                <div className="p-4 bg-purple-500/5 border-t border-slate-700">
+                                    <p className="text-xs text-slate-400">
+                                        Paste this into <code>theme.liquid</code> before the closing <code>&lt;/body&gt;</code> tag.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Step 2: Add Cart Tracking */}
+                            <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                                <div className="p-4 bg-slate-700/30 border-b border-slate-700 flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <ShoppingBag className="w-4 h-4 text-blue-400" />
+                                        <span className="text-sm font-medium text-slate-200">2. E-commerce Tracking Script</span>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            const code = `<script>\n  window.addEventListener('load', function() {\n    if (window.Shopify && window.talkChat) {\n      document.addEventListener('cart:add', function(evt) {\n         window.talkChat.trackEvent('cart_add', evt.detail);\n      });\n      if (typeof window.meta !== 'undefined' && window.meta.page.pageType === 'product') {\n         window.talkChat.trackEvent('product_view', {\n            productId: window.meta.product.id,\n            price: window.meta.product.variants[0].price\n         });\n      }\n    }\n  });\n</script>`;
+                                            navigator.clipboard.writeText(code);
+                                            alert('Tracking script copied!');
+                                        }}
+                                        className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+                                    >
+                                        <Check className="w-3 h-3" />
+                                        Copy Script
+                                    </button>
+                                </div>
+                                <div className="p-6 bg-slate-950">
+                                    <pre className="text-sm font-mono text-blue-300 leading-relaxed overflow-x-auto whitespace-pre-wrap">
+                                        {`<script>
+  window.addEventListener('load', function() {
+    if (window.Shopify && window.talkChat) {
+      
+      // Track Cart Adds
+      document.addEventListener('cart:add', function(evt) {
+         window.talkChat.trackEvent('cart_add', evt.detail);
+      });
+
+      // Track Product Views
+      if (typeof window.meta !== 'undefined' && window.meta.page.pageType === 'product') {
+         window.talkChat.trackEvent('product_view', {
+            productId: window.meta.product.id,
+            price: window.meta.product.variants[0].price
+         });
+      }
+    }
+  });
+</script>`}
+                                    </pre>
+                                </div>
+                                <div className="p-4 bg-blue-500/5 border-t border-slate-700">
+                                    <p className="text-xs text-slate-400">
+                                        Paste this <strong>immediately after</strong> the previous widget code.
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -1039,13 +1232,13 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
                                                                 <span className="text-[10px] bg-purple-500 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">Pro</span>
                                                             </h5>
                                                             <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                                                                To enable instant, low-cost searching across massive documents, your knowledge must be indexed into our vector brain.
+                                                                To enable instant, low-cost searching across massive documents, your knowledge must be indexed into our vector brain. You can paste text below or upload files.
                                                             </p>
 
-                                                            <div className="flex items-center gap-3">
+                                                            <div className="flex flex-wrap items-center gap-3">
                                                                 <button
                                                                     onClick={handleSyncKnowledge}
-                                                                    disabled={isSyncingKB || !widgetConfig.aiKnowledgeBase}
+                                                                    disabled={isSyncingKB}
                                                                     className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-2 disabled:opacity-50"
                                                                 >
                                                                     {isSyncingKB ? (
@@ -1053,8 +1246,24 @@ export const WidgetConfiguration: React.FC<WidgetConfigurationProps> = ({ forceG
                                                                     ) : (
                                                                         <RefreshCw className="w-3.5 h-3.5" />
                                                                     )}
-                                                                    {isSyncingKB ? 'CHUNKING & SYNCING...' : 'SYNC TO INTELLIGENCE'}
+                                                                    {isSyncingKB ? 'CHUNKING & SYNCING...' : 'SYNC TEXT AREA'}
                                                                 </button>
+
+                                                                <button
+                                                                    onClick={() => kbInputRef.current?.click()}
+                                                                    disabled={isSyncingKB}
+                                                                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-2"
+                                                                >
+                                                                    <BookOpen className="w-3.5 h-3.5" />
+                                                                    UPLOAD DOCUMENTS
+                                                                </button>
+                                                                <input
+                                                                    type="file"
+                                                                    ref={kbInputRef}
+                                                                    onChange={handleFileUploadKB}
+                                                                    className="hidden"
+                                                                    accept=".txt,.csv,.md,.json"
+                                                                />
 
                                                                 {kbSyncSuccess && (
                                                                     <span className="text-xs text-green-400 flex items-center gap-1 font-medium">

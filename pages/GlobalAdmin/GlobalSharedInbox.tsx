@@ -22,7 +22,10 @@ import {
     Target,
     BarChart,
     Trash2,
-    Download
+    Download,
+    Instagram,
+    Facebook,
+    MessageCircle
 } from 'lucide-react';
 import { globalChatService, ChatSession, ChatMessage as RealtimeChatMessage, ChatNote, supabase } from '../../services/globalChatRealtimeService';
 import { notificationService } from '../../services/notificationService';
@@ -210,7 +213,7 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                 tags: session.tags || [],
                 unreadCount: 0,
                 avatarColor: avatarColors[index % avatarColors.length],
-                platform: session.visitor_metadata?.platform || 'web',
+                platform: session.channel || session.visitor_metadata?.platform || 'web',
                 location: session.visitor_metadata?.location || 'Unknown',
                 visitor_metadata: session.visitor_metadata,
                 ai_summary: session.ai_summary,
@@ -347,7 +350,7 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
             tags: session.tags || [],
             unreadCount: 1,
             avatarColor: avatarColors[Math.floor(Math.random() * avatarColors.length)],
-            platform: session.visitor_metadata?.platform || 'web',
+            platform: session.channel || session.visitor_metadata?.platform || 'web',
             location: session.visitor_metadata?.location || 'Unknown',
             visitor_metadata: session.visitor_metadata
         };
@@ -598,6 +601,11 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                                         {presence[chat.visitor_metadata?.visitor_id || ''] && (
                                             <span className="text-[10px] bg-green-500/20 text-green-400 px-1 rounded uppercase font-bold">Online</span>
                                         )}
+                                        {/* Platform Icon */}
+                                        {chat.platform === 'whatsapp' && <MessageCircle className="w-3 h-3 text-green-500" title="WhatsApp" />}
+                                        {chat.platform === 'instagram' && <Instagram className="w-3 h-3 text-pink-500" title="Instagram" />}
+                                        {chat.platform === 'facebook' && <Facebook className="w-3 h-3 text-blue-500" title="Messenger" />}
+                                        {chat.platform === 'web' && <Globe className="w-3 h-3 text-slate-400" title="Web" />}
                                     </div>
                                     <span className="text-xs text-slate-500">{chat.timestamp}</span>
                                 </div>
@@ -635,6 +643,12 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                                     {presence[activeChat.visitor_metadata?.visitor_id || ''] && (
                                         <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Active now" />
                                     )}
+                                    <span className="ml-1 opacity-50">
+                                        {activeChat.platform === 'whatsapp' && <MessageCircle className="w-3.5 h-3.5 text-green-500" />}
+                                        {activeChat.platform === 'instagram' && <Instagram className="w-3.5 h-3.5 text-pink-500" />}
+                                        {activeChat.platform === 'facebook' && <Facebook className="w-3.5 h-3.5 text-blue-500" />}
+                                        {activeChat.platform === 'web' && <Globe className="w-3.5 h-3.5 text-slate-400" />}
+                                    </span>
                                 </h3>
                                 <div className="flex items-center gap-2 text-xs text-slate-400">
                                     {presence[activeChat.visitor_metadata?.visitor_id || ''] ? (

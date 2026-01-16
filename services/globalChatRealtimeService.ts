@@ -96,6 +96,9 @@ export interface WidgetConfig {
     deepseek_api_key?: string;
     ai_knowledge_base?: string;
     tenant_id?: string | null;
+    typing_preview_enabled?: boolean;
+    heatmap_enabled?: boolean;
+    heatmap_pro_tier_only?: boolean;
 }
 
 // Realtime Service Class
@@ -106,6 +109,36 @@ class GlobalChatRealtimeService {
     constructor() {
         this.supabase = supabase;
     }
+
+    /**
+     * Log a visitor click for heatmap analysis
+     */
+    async logVisitorClick(data: {
+        session_id: string;
+        tenant_id: string | null;
+        page_url: string;
+        x_pct: number;
+        y_pct: number;
+        viewport_width: number;
+        viewport_height: number;
+    }) {
+        const { error } = await this.supabase
+            .from('visitor_clicks')
+            .insert({
+                session_id: data.session_id,
+                tenant_id: data.tenant_id,
+                page_url: data.page_url,
+                x_pct: data.x_pct,
+                y_pct: data.y_pct,
+                viewport_width: data.viewport_width,
+                viewport_height: data.viewport_height
+            });
+
+        if (error) {
+            console.error('[Realtime] Failed to log click:', error);
+        }
+    }
+
 
     /**
      * Subscribe to a specific chat session for real-time updates
@@ -218,6 +251,46 @@ class GlobalChatRealtimeService {
 
         this.channels.set(channelName, channel);
         return channel;
+    }
+
+    /**
+     * Broadcast what the visitor is typing in real-time
+     */
+    async broadcastTyping(sessionId: string, content: string) {
+        const channelName = `session:${sessionId}`;
+        let channel = this.channels.get(channelName);
+
+        // If not joined, we just skip (should be joined by subscribeToSession)
+        if (!channel) {
+            console.warn(`[Realtime] Cannot broadcast typing: Not subscribed to session ${sessionId}`);
+            return;
+        }
+
+        return channel.send({
+            type: 'broadcast',
+            event: 'typing_preview',
+            payload: { content }
+        });
+    }
+
+    /**
+     * Subscribe specifically to typing previews
+     */
+    subscribeToTypingPreview(sessionId: string, onPreview: (content: string) => void) {
+        const channelName = `session:${sessionId}`;
+        let channel = this.channels.get(channelName);
+
+        if (!channel) {
+            // Join if not exists
+            channel = this.supabase.channel(channelName);
+            this.channels.set(channelName, channel);
+        }
+
+        return channel
+            .on('broadcast', { event: 'typing_preview' }, (payload) => {
+                onPreview(payload.payload.content);
+            })
+            .subscribe();
     }
 
     /**
@@ -437,6 +510,111 @@ class GlobalChatRealtimeService {
         } catch (error) {
             console.error('[Realtime] Exception in updateVisitorMetadata:', error);
             return { session: null, error };
+        }
+    }
+
+    /**
+     * Track a Shopify/E-commerce Cart Event
+     */
+    async trackCartEvent(data: {
+        tenant_id: string | null;
+        visitor_id: string;
+        session_id: string;
+        event_type: 'cart_add' | 'cart_remove' | 'cart_view' | 'checkout_start' | 'purchase';
+        product_id?: string;
+        product_name?: string;
+        price?: number;
+        quantity?: number;
+        currency?: string;
+        cart_total: number;
+        metadata?: any;
+    }) {
+        const { error } = await this.supabase
+            .from('shopify_cart_events')
+            .insert({
+                tenant_id: data.tenant_id,
+                visitor_id: data.visitor_id,
+                session_id: data.session_id,
+                event_type: data.event_type,
+                product_id: data.product_id,
+                product_name: data.product_name,
+                price: data.price,
+                quantity: data.quantity,
+                currency: data.currency || 'USD',
+                cart_total: data.cart_total,
+                metadata: data.metadata || {}
+            });
+
+        if (error) {
+            console.error('[Realtime] Failed to track cart event:', error);
+            return { error };
+        }
+
+        // Also update the abandoned_carts state
+        await this.updateAbandonedCart({
+            tenant_id: data.tenant_id,
+            visitor_id: data.visitor_id,
+            session_id: data.session_id,
+            cart_total: data.cart_total,
+            status: data.event_type === 'purchase' ? 'converted' : 'active'
+        });
+
+        return { error: null };
+    }
+
+    /**
+     * Update Abandoned Cart State
+     * Creates or updates the single reliable "state" of the visitor's cart
+     */
+    async updateAbandonedCart(data: {
+        tenant_id: string | null;
+        visitor_id: string;
+        session_id: string;
+        cart_total: number;
+        status?: 'active' | 'abandoned' | 'recovered' | 'converted';
+        products?: any[];
+        customer_email?: string;
+        checkout_url?: string;
+    }) {
+        // Upsert based on visitor_id (and tenant_id)
+        // We first try to find an active cart for this visitor
+        const { data: existingCart } = await this.supabase
+            .from('abandoned_carts')
+            .select('id')
+            .eq('visitor_id', data.visitor_id)
+            .eq('tenant_id', data.tenant_id)
+            .neq('status', 'converted') // Don't touch already purchased carts
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        const payload: any = {
+            tenant_id: data.tenant_id,
+            visitor_id: data.visitor_id,
+            session_id: data.session_id,
+            cart_total: data.cart_total,
+            updated_at: new Date().toISOString()
+        };
+
+        if (data.status) payload.status = data.status;
+        if (data.products) payload.products = data.products;
+        if (data.customer_email) payload.customer_email = data.customer_email;
+        if (data.checkout_url) payload.checkout_url = data.checkout_url;
+
+        let result;
+        if (existingCart) {
+            result = await this.supabase
+                .from('abandoned_carts')
+                .update(payload)
+                .eq('id', existingCart.id);
+        } else {
+            result = await this.supabase
+                .from('abandoned_carts')
+                .insert(payload);
+        }
+
+        if (result.error) {
+            console.error('[Realtime] Failed to sync abandoned cart:', result.error);
         }
     }
 

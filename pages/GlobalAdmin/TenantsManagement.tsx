@@ -13,6 +13,7 @@ interface Tenant {
     owner_name?: string;
     total_users?: number;
     total_chats?: number;
+    ai_credits_balance?: number;
 }
 
 export const TenantsManagement: React.FC = () => {
@@ -62,12 +63,16 @@ export const TenantsManagement: React.FC = () => {
             // Get owner details and stats for each tenant
             const tenantsWithDetails = await Promise.all(
                 (data || []).map(async (tenant) => {
-                    // Get owner info
-                    const { data: owner } = await supabase
-                        .from('user_profiles')
-                        .select('email, name')
-                        .eq('user_id', tenant.owner_id)
-                        .single();
+                    // Get owner info - only if owner_id exists
+                    let owner = null;
+                    if (tenant.owner_id) {
+                        const { data: ownerData } = await supabase
+                            .from('user_profiles')
+                            .select('email, name')
+                            .eq('user_id', tenant.owner_id)
+                            .single();
+                        owner = ownerData;
+                    }
 
                     // Count users
                     const { count: userCount } = await supabase
@@ -259,19 +264,51 @@ export const TenantsManagement: React.FC = () => {
                                             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
                                                 <Building2 className="w-5 h-5 text-white" />
                                             </div>
-                                            <span className="text-white font-medium">{tenant.name}</span>
+                                            <div className="flex flex-col">
+                                                <span className="text-white font-medium">{tenant.name}</span>
+                                                <span className="text-[10px] font-mono text-slate-500 uppercase">{tenant.id.substring(0, 8)}</span>
+                                            </div>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <div className="text-white">{tenant.owner_name || 'N/A'}</div>
-                                        <div className="text-slate-400 text-sm">{tenant.owner_email}</div>
+                                        <div className="text-white">{tenant.owner_name || 'System / Missing'}</div>
+                                        <div className="text-slate-400 text-sm">{tenant.owner_email || 'No email associated'}</div>
                                     </td>
                                     <td className="px-6 py-4 text-white font-medium">{tenant.total_users}</td>
                                     <td className="px-6 py-4 text-white font-medium">{tenant.total_chats}</td>
                                     <td className="px-6 py-4">
-                                        <span className="px-3 py-1 bg-blue-600/20 text-blue-400 rounded-full text-sm font-medium">
-                                            {tenant.subscription_plan}
+                                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${tenant.subscription_plan === 'enterprise' ? 'bg-purple-500/10 text-purple-400' :
+                                            tenant.subscription_plan === 'pro' ? 'bg-blue-500/10 text-blue-400' :
+                                                'bg-slate-500/10 text-slate-400'
+                                            }`}>
+                                            {tenant.subscription_plan.toUpperCase()}
                                         </span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-mono text-amber-500 font-bold">
+                                                {tenant.ai_credits_balance?.toLocaleString(undefined, { maximumFractionDigits: 1 }) || '0'}
+                                            </span>
+                                            <button
+                                                onClick={async () => {
+                                                    const amountStr = prompt(`Add credits to ${tenant.name}:`, "1000");
+                                                    if (amountStr) {
+                                                        const amount = parseFloat(amountStr);
+                                                        if (!isNaN(amount)) {
+                                                            const { error } = await supabase.rpc('add_tenant_credits', {
+                                                                p_tenant_id: tenant.id,
+                                                                p_amount: amount
+                                                            });
+                                                            if (error) alert(error.message);
+                                                            else loadTenants();
+                                                        }
+                                                    }
+                                                }}
+                                                className="text-[10px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded hover:bg-amber-500/20"
+                                            >
+                                                +TopUp
+                                            </button>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4">
                                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${tenant.status === 'active'

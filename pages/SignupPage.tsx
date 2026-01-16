@@ -97,12 +97,32 @@ export const SignupPage: React.FC = () => {
                     throw new Error(`This invite was sent to ${inviteData.email}. Please use that email to signup.`);
                 }
 
+                let tenantId = inviteData.tenant_id;
+
+                // If this was a "New Tenant" invite, we might need to create the tenant row now
+                if (!tenantId) {
+                    const { data: tenant, error: tenantError } = await supabase
+                        .from('tenants')
+                        .insert({
+                            name: formData.companyName || inviteData.company || 'New Company',
+                            owner_id: authData.user.id,
+                            subscription_plan: 'free'
+                        })
+                        .select()
+                        .single();
+
+                    if (tenantError) throw tenantError;
+                    tenantId = tenant.id;
+                }
+
                 // Update existing invite profile
                 const { error: updateError } = await supabase
                     .from('user_profiles')
                     .update({
                         user_id: authData.user.id,
-                        status: 'active'
+                        tenant_id: tenantId,
+                        status: 'active',
+                        company: formData.companyName || inviteData.company
                     })
                     .eq('id', inviteId);
 
@@ -130,6 +150,7 @@ export const SignupPage: React.FC = () => {
                         name: formData.name,
                         role: 'admin', // The person who signs up is the Tenant Admin
                         tenant_id: tenant.id,
+                        company: formData.companyName,
                         status: 'active'
                     });
 

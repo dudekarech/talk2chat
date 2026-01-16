@@ -18,6 +18,7 @@ interface DashboardStats {
     activeChats: number;
     teamMembers: number;
     avgResponseTime: string;
+    aiCredits: number;
 }
 
 export const TenantDashboardHome: React.FC = () => {
@@ -26,13 +27,63 @@ export const TenantDashboardHome: React.FC = () => {
         totalChats: 0,
         activeChats: 0,
         teamMembers: 0,
-        avgResponseTime: '0m'
+        avgResponseTime: '0m',
+        aiCredits: 0
     });
     const [loading, setLoading] = useState(true);
     const [tenantName, setTenantName] = useState('');
 
     useEffect(() => {
         loadDashboardData();
+
+        // Set up real-time subscription for credit balance updates
+        const setupRealtimeSubscription = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            const { data: profile } = await supabase
+                .from('user_profiles')
+                .select('tenant_id')
+                .eq('user_id', user.id)
+                .single();
+
+            if (!profile?.tenant_id) return;
+
+            // Subscribe to tenant updates (specifically ai_credits_balance)
+            const subscription = supabase
+                .channel(`tenant_credits_${profile.tenant_id}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'UPDATE',
+                        schema: 'public',
+                        table: 'tenants',
+                        filter: `id=eq.${profile.tenant_id}`
+                    },
+                    (payload) => {
+                        console.log('[Dashboard] Credit balance updated:', payload.new);
+                        // Update only the credits stat without full reload
+                        if (payload.new && 'ai_credits_balance' in payload.new) {
+                            setStats(prev => ({
+                                ...prev,
+                                aiCredits: payload.new.ai_credits_balance || 0
+                            }));
+                        }
+                    }
+                )
+                .subscribe();
+
+            return () => {
+                subscription.unsubscribe();
+            };
+        };
+
+        const unsubscribe = setupRealtimeSubscription();
+
+        // Cleanup on unmount
+        return () => {
+            unsubscribe.then(cleanup => cleanup && cleanup());
+        };
     }, []);
 
     const loadDashboardData = async () => {
@@ -68,11 +119,19 @@ export const TenantDashboardHome: React.FC = () => {
                     .eq('tenant_id', profile.tenant_id)
             ]);
 
+            // Fetch tenant detail for credits
+            const { data: tenantData } = await supabase
+                .from('tenants')
+                .select('ai_credits_balance')
+                .eq('id', profile.tenant_id)
+                .single();
+
             setStats({
                 totalChats: chatsResponse.count || 0,
                 activeChats: activeChatsResponse.count || 0,
                 teamMembers: teamResponse.count || 0,
-                avgResponseTime: '2m 30s' // Placeholder until we have real metrics
+                avgResponseTime: '2m 30s', // Placeholder until we have real metrics
+                aiCredits: tenantData?.ai_credits_balance || 0
             });
 
         } catch (error) {
@@ -86,7 +145,7 @@ export const TenantDashboardHome: React.FC = () => {
         { label: 'Total Chats', value: stats.totalChats.toString(), change: '+12%', trend: 'up', icon: MessageSquare, color: 'blue' },
         { label: 'Active Chats', value: stats.activeChats.toString(), change: '+5%', trend: 'up', icon: Activity, color: 'green' },
         { label: 'Team Members', value: stats.teamMembers.toString(), change: '0%', trend: 'neutral', icon: Users, color: 'purple' },
-        { label: 'Avg Response', value: stats.avgResponseTime, change: '-10%', trend: 'down', icon: Clock, color: 'orange' }, // Down is good for response time
+        { label: 'AI Credits', value: stats.aiCredits.toLocaleString(undefined, { maximumFractionDigits: 1 }), change: 'Managed', trend: 'neutral', icon: Clock, color: 'amber' },
     ];
 
     return (
@@ -97,6 +156,18 @@ export const TenantDashboardHome: React.FC = () => {
                     <p className="text-slate-400">Welcome back to {tenantName}</p>
                 </div>
                 <div className="flex gap-2">
+                    <button
+                        onClick={() => {
+                            setLoading(true);
+                            loadDashboardData();
+                        }}
+                        disabled={loading}
+                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
+                        title="Refresh dashboard statistics"
+                    >
+                        <Activity className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                        Refresh
+                    </button>
                     <button
                         onClick={() => navigate('/tenant/widget')}
                         className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
@@ -123,8 +194,8 @@ export const TenantDashboardHome: React.FC = () => {
                                 <stat.icon className="w-6 h-6" />
                             </div>
                             <div className={`flex items-center gap-1 text-sm ${stat.trend === 'up' ? 'text-green-400' :
-                                    stat.trend === 'down' && stat.label === 'Avg Response' ? 'text-green-400' : // Good for response time
-                                        stat.trend === 'down' ? 'text-red-400' : 'text-slate-400'
+                                stat.trend === 'down' && stat.label === 'Avg Response' ? 'text-green-400' : // Good for response time
+                                    stat.trend === 'down' ? 'text-red-400' : 'text-slate-400'
                                 }`}>
                                 <span>{stat.change}</span>
                                 {stat.trend === 'up' ? <ArrowUpRight className="w-4 h-4" /> :

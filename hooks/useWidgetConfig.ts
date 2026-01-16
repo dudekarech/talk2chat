@@ -280,6 +280,8 @@ function getDefaultConfig() {
 
         // Advanced
         typingIndicator: true,
+        typingPreviewEnabled: true,
+        heatmapEnabled: false,
         readReceipts: true,
         fileUpload: true,
         maxFileSize: 5,

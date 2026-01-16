@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Info, AlertTriangle, Megaphone, CheckCircle2, ChevronRight, Loader2, Inbox } from 'lucide-react';
+import { Bell, Info, AlertTriangle, Megaphone, CheckCircle, ChevronRight, Loader2, Inbox } from 'lucide-react';
 import { notificationService, SystemNotification } from '../../services/notificationService';
 
 export const TenantNotifications: React.FC = () => {
@@ -85,8 +85,8 @@ export const TenantNotifications: React.FC = () => {
                                 key={notif.id}
                                 onClick={() => handleRead(notif)}
                                 className={`w-full text-left p-4 rounded-xl border transition-all duration-200 group relative ${selectedNotif?.id === notif.id
-                                        ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-900/20'
-                                        : 'bg-slate-800 border-slate-700 hover:border-slate-500'
+                                    ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-900/20'
+                                    : 'bg-slate-800 border-slate-700 hover:border-slate-500'
                                     }`}
                             >
                                 <div className="flex items-start gap-4">
@@ -159,7 +159,7 @@ export const TenantNotifications: React.FC = () => {
                                 <div className="mt-12 flex items-center gap-4">
                                     <div className="flex-1 h-px bg-slate-700/50" />
                                     <div className="flex items-center gap-2 text-slate-500 text-sm italic">
-                                        <CheckCircle2 className="w-4 h-4 text-green-500/50" />
+                                        <CheckCircle className="w-4 h-4 text-green-500/50" />
                                         You've acknowledged this message
                                     </div>
                                     <div className="flex-1 h-px bg-slate-700/50" />

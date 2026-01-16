@@ -91,16 +91,18 @@ export const Users: React.FC = () => {
             // 3. Tenant Admin -> Only sees users THEY CREATED (invited_by = auth.uid()).
             // 4. Others -> Only see their own profile (handled by RLS/context).
 
-            if (currentProfile?.role === 'super_admin' || (currentProfile?.role === 'admin' && !currentProfile?.tenant_id)) {
-                // Super/Global Admin: No additional filter (sees all non-deleted)
-                console.log('Super Admin detected: Loading all users');
-            } else if (currentProfile?.role === 'tenant_admin') {
-                // Tenant Admin: Only see users THEY created
-                console.log('Tenant Admin detected: Loading only self-invited users');
-                query = query.eq('invited_by', currentUser.id);
+            if (currentProfile?.role === 'super_admin' && !currentProfile?.tenant_id) {
+                // Super Admin: Sees everyone across all tenants
+                console.log('Super Admin detected: Loading all users across all tenants');
+            } else if (currentProfile?.tenant_id) {
+                // Tenant-bound user (Admin, Agent, etc): Only see users in their own tenant
+                console.log(`Tenant User detected: Loading users for tenant ${currentProfile.tenant_id}`);
+                query = query.eq('tenant_id', currentProfile.tenant_id);
             } else {
-                // Others: Just themselves
-                query = query.eq('user_id', currentUser.id);
+                // Fallback for global admins without a tenant (but not super admins)
+                // They should only see other global users (tenant_id null)
+                console.log('Global Admin detected: Loading global users only');
+                query = query.is('tenant_id', null);
             }
 
             const { data: profiles, error } = await query;

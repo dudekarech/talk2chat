@@ -143,6 +143,26 @@ export interface WidgetConfig {
     max_sessions_per_hour: number;
     message_throttle_seconds: number;
 
+    // Omnichannel Integrations (JSONB)
+    integrations: {
+        whatsapp: {
+            enabled: boolean;
+            phoneNumberId?: string;
+            apiKey?: string;
+            verifyToken?: string;
+        };
+        instagram: {
+            enabled: boolean;
+            pageId?: string;
+            accessToken?: string;
+        };
+        facebook: {
+            enabled: boolean;
+            pageId?: string;
+            accessToken?: string;
+        };
+    };
+
     updated_at: string;
 }
 
@@ -197,7 +217,7 @@ class WidgetConfigService {
                 track_visitors, gdpr_show_consent, gdpr_consent_text, gdpr_show_disclaimer,
                 gdpr_disclaimer_text, gdpr_disable_tracking, retention_period_days,
                 privacy_hide_ip, privacy_mask_data, captcha_site_key, max_sessions_per_hour,
-                message_throttle_seconds, updated_at
+                message_throttle_seconds, integrations, updated_at
             `;
 
             let query = supabase

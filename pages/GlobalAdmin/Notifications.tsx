@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Send, AlertCircle, CheckCircle2, Clock, Loader2, Users } from 'lucide-react';
+import { Bell, Send, AlertCircle, CheckCircle, Clock, Loader2, Users } from 'lucide-react';
 import { notificationService, SystemNotification } from '../../services/notificationService';
 import { supabase } from '../../services/supabaseClient';
 

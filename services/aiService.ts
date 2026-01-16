@@ -49,6 +49,7 @@ export class AIService {
         apiKey?: string;
         modelName?: string;
         tenant_id?: string | null;
+        session_id?: string;
     }): Promise<string> {
         const { message, instructions, provider, modelName } = payload;
 
@@ -72,16 +73,30 @@ export class AIService {
                 body: payload
             });
 
-            if (error) throw error;
-            if (data.error) throw new Error(data.error);
+            if (error) {
+                console.error('[AI Service] ❌ Edge Function Error:', error);
+                console.error('[AI Service] Error Status:', error.status);
+                console.error('[AI Service] Error Context:', error.context);
+                throw error;
+            }
+
+            if (data.error) {
+                console.error('[AI Service] ❌ Data Error:', data.error);
+                throw new Error(data.error);
+            }
 
             return data.response || "No response from AI proxy.";
         } catch (error: any) {
-            console.error('[AI Service] Proxy Error Details:', error);
+            console.error('[AI Service] ===== PROXY ERROR DETAILS =====');
+            console.error('[AI Service] Full Error Object:', error);
+            console.error('[AI Service] Error Name:', error.name);
+            console.error('[AI Service] Error Message:', error.message);
+            console.error('[AI Service] Error Context:', error.context);
 
             let message = 'The AI service is temporarily unavailable.';
+            let technicalDetails = '';
 
-            // Try to extract error message from Supabase FunctionsHttpError
+            // Try to extract detailed error from Supabase FunctionsHttpError
             if (error.context && error.context.body) {
                 try {
                     const body = error.context.body;
@@ -93,25 +108,41 @@ export class AIService {
                     }
                     // Handle string body
                     else if (typeof body === 'string') {
+                        console.log('[AI Service] Response Body (String):', body);
                         try { bodyJson = JSON.parse(body); } catch { bodyJson = { message: body }; }
                     }
                     // Handle Blob/Response-like body
                     else if (typeof body.text === 'function') {
                         const text = await body.text();
+                        console.log('[AI Service] Response Body (Text):', text);
                         try { bodyJson = JSON.parse(text); } catch { bodyJson = { message: text }; }
                     }
                     // Handle plain object body
                     else if (typeof body === 'object') {
+                        console.log('[AI Service] Response Body (Object):', body);
                         bodyJson = body;
                     }
 
+                    console.log('[AI Service] Parsed Body JSON:', bodyJson);
                     message = bodyJson?.error?.message || bodyJson?.error || bodyJson?.message || message;
+                    technicalDetails = bodyJson?.details || bodyJson?.hint || '';
+
+                    console.error('[AI Service] Extracted Error Message:', message);
+                    console.error('[AI Service] Technical Details:', technicalDetails);
                 } catch (e) {
                     console.warn('[AI Service] Failed to parse error body:', e);
                 }
             } else if (error.message) {
                 message = error.message;
             }
+
+            // Create a detailed error message for logging
+            const fullError = technicalDetails
+                ? `${message} (${technicalDetails})`
+                : message;
+
+            console.error('[AI Service] ===== FINAL ERROR MESSAGE =====');
+            console.error('[AI Service]', fullError);
 
             return `AI Service Error: ${message}`;
         }
@@ -347,7 +378,30 @@ export class AIService {
             apiKey: (typeof window !== 'undefined' ? (window as any).GEMINI_API_KEY : '')
         });
     }
+    /**
+     * Ingest a raw document into the Knowledge Base
+     */
+    async ingestKnowledgeBase(payload: {
+        tenant_id: string | null;
+        content: string;
+        filename: string;
+        metadata?: any;
+    }): Promise<{ success: boolean; message: string }> {
+        try {
+            const { data, error } = await supabase.functions.invoke('process-knowledge', {
+                body: payload
+            });
+
+            if (error) throw error;
+            if (data.error) throw new Error(data.error);
+
+            return data;
+        } catch (error: any) {
+            console.error('[AI Service] Ingestion Error:', error);
+            throw error;
+        }
+    }
 }
 
-console.log('[AI Service] Instance initialized v1.1');
+console.log('[AI Service] Instance initialized v1.2');
 export const aiService = new AIService();

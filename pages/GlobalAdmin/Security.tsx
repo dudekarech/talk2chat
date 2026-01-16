@@ -1,18 +1,52 @@
 import React, { useState } from 'react';
 import { Shield, Lock, AlertTriangle, FileText, Activity } from 'lucide-react';
+import { supabase } from '../../services/supabaseClient';
 
 export const Security: React.FC = () => {
     const [twoFactorEnabled, setTwoFactorEnabled] = useState(true);
     const [ipRestrictionEnabled, setIpRestrictionEnabled] = useState(false);
     const [passwordMinLength, setPasswordMinLength] = useState(8);
 
-    const auditLogs = [
-        { id: 1, action: 'Tenant Created', user: 'Gilbert M.', tenant: 'TechFlow Inc.', ip: '192.168.1.42', time: '2 hours ago', severity: 'info' },
-        { id: 2, action: 'User Suspended', user: 'Gilbert M.', tenant: 'Global Logistics', ip: '192.168.1.42', time: '5 hours ago', severity: 'warning' },
-        { id: 3, action: 'Billing Updated', user: 'System', tenant: 'Designify', ip: 'N/A', time: '1 day ago', severity: 'info' },
-        { id: 4, action: 'Failed Login Attempt', user: 'Unknown', tenant: 'N/A', ip: '203.45.12.89', time: '2 days ago', severity: 'critical' },
-        { id: 5, action: 'API Key Generated', user: 'Gilbert M.', tenant: 'StartUp Lab', ip: '192.168.1.42', time: '3 days ago', severity: 'info' },
-    ];
+    const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    React.useEffect(() => {
+        const fetchLogs = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('security_audit_logs')
+                    .select(`
+                        id,
+                        event_type,
+                        action_details,
+                        created_at,
+                        tenant_id,
+                        tenants (name),
+                        user_profiles:actor_id (name)
+                    `)
+                    .order('created_at', { ascending: false })
+                    .limit(20);
+
+                if (error) throw error;
+
+                setAuditLogs((data || []).map(log => ({
+                    id: log.id,
+                    action: log.event_type.replace(/_/g, ' ').toUpperCase(),
+                    user: (log as any).user_profiles?.name || 'System',
+                    tenant: (log as any).tenants?.name || 'Global',
+                    ip: log.action_details?.ip || 'N/A',
+                    time: new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    severity: log.event_type.includes('error') || log.event_type.includes('fail') ? 'critical' : 'info'
+                })));
+            } catch (err) {
+                console.error('Error fetching audit logs:', err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchLogs();
+    }, []);
 
     return (
         <div className="space-y-6">
@@ -46,16 +80,6 @@ export const Security: React.FC = () => {
                             <div>
                                 <p className="text-white font-medium">Require Special Characters</p>
                                 <p className="text-xs text-slate-500">Force passwords to include symbols</p>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" className="sr-only peer" defaultChecked />
-                                <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                            </label>
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-white font-medium">Require Uppercase Letters</p>
-                                <p className="text-xs text-slate-500">Mix of upper and lowercase required</p>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" className="sr-only peer" defaultChecked />
@@ -103,24 +127,12 @@ export const Security: React.FC = () => {
                                 <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                             </label>
                         </div>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-white font-medium">Session Timeout</p>
-                                <p className="text-xs text-slate-500">Auto-logout after inactivity</p>
-                            </div>
-                            <select className="bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option>15 minutes</option>
-                                <option>30 minutes</option>
-                                <option>1 hour</option>
-                                <option>Never</option>
-                            </select>
-                        </div>
                     </div>
                 </div>
             </div>
 
             {/* Audit Logs */}
-            <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+            <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-2xl">
                 <div className="p-6 border-b border-slate-700 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-green-500/10 rounded-lg">
@@ -131,39 +143,42 @@ export const Security: React.FC = () => {
                     <button className="text-sm text-blue-400 hover:text-blue-300">View All Logs</button>
                 </div>
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-900/50 text-slate-400">
-                            <tr>
-                                <th className="px-6 py-4 font-medium">Action</th>
-                                <th className="px-6 py-4 font-medium">User</th>
-                                <th className="px-6 py-4 font-medium">Tenant</th>
-                                <th className="px-6 py-4 font-medium">IP Address</th>
-                                <th className="px-6 py-4 font-medium">Time</th>
-                                <th className="px-6 py-4 font-medium">Severity</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-700">
-                            {auditLogs.map((log) => (
-                                <tr key={log.id} className="hover:bg-slate-700/30 transition-colors">
-                                    <td className="px-6 py-4 font-medium text-white">{log.action}</td>
-                                    <td className="px-6 py-4 text-slate-300">{log.user}</td>
-                                    <td className="px-6 py-4 text-slate-300">{log.tenant}</td>
-                                    <td className="px-6 py-4 text-slate-400 font-mono text-xs">{log.ip}</td>
-                                    <td className="px-6 py-4 text-slate-400">{log.time}</td>
-                                    <td className="px-6 py-4">
-                                        <span className={`flex items-center gap-1.5 text-xs font-medium ${log.severity === 'critical' ? 'text-red-400' :
-                                                log.severity === 'warning' ? 'text-orange-400' : 'text-blue-400'
-                                            }`}>
-                                            {log.severity === 'critical' ? <AlertTriangle className="w-3.5 h-3.5" /> :
-                                                log.severity === 'warning' ? <AlertTriangle className="w-3.5 h-3.5" /> :
-                                                    <Activity className="w-3.5 h-3.5" />}
-                                            {log.severity}
-                                        </span>
-                                    </td>
+                    {isLoading ? (
+                        <div className="p-12 text-center text-slate-500">Syncing audit vault...</div>
+                    ) : auditLogs.length === 0 ? (
+                        <div className="p-12 text-center text-slate-500">No security events recorded.</div>
+                    ) : (
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-900/50 text-slate-400 font-bold">
+                                <tr>
+                                    <th className="px-6 py-4">Action</th>
+                                    <th className="px-6 py-4">User</th>
+                                    <th className="px-6 py-4">Tenant</th>
+                                    <th className="px-6 py-4">IP Address</th>
+                                    <th className="px-6 py-4">Time</th>
+                                    <th className="px-6 py-4">Severity</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-700">
+                                {auditLogs.map((log) => (
+                                    <tr key={log.id} className="hover:bg-slate-700/30 transition-colors">
+                                        <td className="px-6 py-4 font-bold text-blue-400">{log.action}</td>
+                                        <td className="px-6 py-4 text-slate-300 font-medium">{log.user}</td>
+                                        <td className="px-6 py-4 text-slate-300">{log.tenant}</td>
+                                        <td className="px-6 py-4 text-slate-400 font-mono text-xs">{log.ip}</td>
+                                        <td className="px-6 py-4 text-slate-400">{log.time}</td>
+                                        <td className="px-6 py-4">
+                                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${log.severity === 'critical' ? 'bg-red-500/20 text-red-400' :
+                                                log.severity === 'warning' ? 'bg-orange-500/20 text-orange-400' : 'bg-blue-500/20 text-blue-400'
+                                                }`}>
+                                                {log.severity}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             </div>
         </div>

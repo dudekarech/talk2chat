@@ -1,12 +1,13 @@
 
 import React, { useState, useRef } from 'react';
+import { aiService } from '../services/aiService';
 import { WidgetConfig, KBFile } from '../types';
 import {
     Save, Bot, MessageSquare, Palette,
     Layout, Globe, Zap, FileText, ChevronDown, ChevronUp, Image, Shield, Moon,
     Smile, Paperclip, Mic, Sparkles, Languages, X, Plus, Upload, Trash2, File,
     Square, Circle, User as UserIcon, Share2, Facebook, Instagram, Smartphone,
-    Eye, MousePointer, Activity, Copy, Code, Check
+    Eye, MousePointer, Activity, Copy, Code, Check, ShoppingBag
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -25,6 +26,7 @@ export const Settings: React.FC<SettingsProps> = ({ config, onSave }) => {
     const logoInputRef = useRef<HTMLInputElement>(null);
     const avatarInputRef = useRef<HTMLInputElement>(null);
     const iconInputRef = useRef<HTMLInputElement>(null);
+    const kbInputRef = useRef<HTMLInputElement>(null);
 
     const handleSave = () => {
         onSave(localConfig);
@@ -53,29 +55,50 @@ export const Settings: React.FC<SettingsProps> = ({ config, onSave }) => {
         });
     };
 
-    const handleSimulateUploadKB = () => {
-        const mockFiles = [
-            { name: 'product_manual_v2.pdf', type: 'pdf', size: '2.4 MB' },
-            { name: 'refund_policy.doc', type: 'doc', size: '150 KB' },
-            { name: 'faq_export.csv', type: 'csv', size: '45 KB' }
-        ];
-        const randomFile = mockFiles[Math.floor(Math.random() * mockFiles.length)];
+    const handleFileUploadKB = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
 
-        const newFile: KBFile = {
-            id: `kb_${Date.now()}`,
-            name: randomFile.name,
-            type: randomFile.type as any,
-            size: randomFile.size,
-            uploadDate: Date.now()
-        };
+        // Visual feedback
+        const originalText = 'Upload';
+        const target = e.target.parentElement;
+        if (target) target.innerText = 'Processing...';
 
-        setLocalConfig({
-            ...localConfig,
-            knowledgeBase: {
-                ...localConfig.knowledgeBase,
-                files: [...localConfig.knowledgeBase.files, newFile]
-            }
-        });
+        try {
+            const text = await file.text();
+
+            await aiService.ingestKnowledgeBase({
+                tenant_id: localConfig.tenantId,
+                content: text,
+                filename: file.name,
+                metadata: { size: file.size, last_modified: file.lastModified }
+            });
+
+            const newFile: KBFile = {
+                id: `kb_${Date.now()}`,
+                name: file.name,
+                type: file.name.split('.').pop() as any,
+                size: `${(file.size / 1024).toFixed(1)} KB`,
+                uploadDate: Date.now()
+            };
+
+            setLocalConfig({
+                ...localConfig,
+                knowledgeBase: {
+                    ...localConfig.knowledgeBase,
+                    files: [...localConfig.knowledgeBase.files, newFile]
+                }
+            });
+
+            if (target) target.innerText = 'Success!';
+            setTimeout(() => { if (target) target.innerText = originalText; }, 2000);
+
+        } catch (error: any) {
+            console.error('[KB] Upload failed:', error);
+            alert(`Failed to process document: ${error.message}`);
+            if (target) target.innerText = 'Error';
+            setTimeout(() => { if (target) target.innerText = originalText; }, 2000);
+        }
     };
 
     const handleRemoveFile = (id: string) => {
@@ -847,10 +870,10 @@ export const Settings: React.FC<SettingsProps> = ({ config, onSave }) => {
                                         <div className="flex items-center justify-between text-xs">
                                             <span className="text-slate-600">WhatsApp Business</span>
                                             <span className={`px-2 py-1 rounded-full font-medium ${localConfig.integrations?.whatsapp?.enabled && localConfig.integrations?.whatsapp?.phoneNumberId && localConfig.integrations?.whatsapp?.apiKey
-                                                    ? 'bg-green-100 text-green-700'
-                                                    : localConfig.integrations?.whatsapp?.enabled
-                                                        ? 'bg-yellow-100 text-yellow-700'
-                                                        : 'bg-slate-200 text-slate-500'
+                                                ? 'bg-green-100 text-green-700'
+                                                : localConfig.integrations?.whatsapp?.enabled
+                                                    ? 'bg-yellow-100 text-yellow-700'
+                                                    : 'bg-slate-200 text-slate-500'
                                                 }`}>
                                                 {localConfig.integrations?.whatsapp?.enabled && localConfig.integrations?.whatsapp?.phoneNumberId && localConfig.integrations?.whatsapp?.apiKey
                                                     ? 'Configured'
@@ -862,10 +885,10 @@ export const Settings: React.FC<SettingsProps> = ({ config, onSave }) => {
                                         <div className="flex items-center justify-between text-xs">
                                             <span className="text-slate-600">Instagram Direct</span>
                                             <span className={`px-2 py-1 rounded-full font-medium ${localConfig.integrations?.instagram?.enabled && localConfig.integrations?.instagram?.pageId && localConfig.integrations?.instagram?.accessToken
-                                                    ? 'bg-green-100 text-green-700'
-                                                    : localConfig.integrations?.instagram?.enabled
-                                                        ? 'bg-yellow-100 text-yellow-700'
-                                                        : 'bg-slate-200 text-slate-500'
+                                                ? 'bg-green-100 text-green-700'
+                                                : localConfig.integrations?.instagram?.enabled
+                                                    ? 'bg-yellow-100 text-yellow-700'
+                                                    : 'bg-slate-200 text-slate-500'
                                                 }`}>
                                                 {localConfig.integrations?.instagram?.enabled && localConfig.integrations?.instagram?.pageId && localConfig.integrations?.instagram?.accessToken
                                                     ? 'Configured'
@@ -877,10 +900,10 @@ export const Settings: React.FC<SettingsProps> = ({ config, onSave }) => {
                                         <div className="flex items-center justify-between text-xs">
                                             <span className="text-slate-600">Facebook Messenger</span>
                                             <span className={`px-2 py-1 rounded-full font-medium ${localConfig.integrations?.facebook?.enabled && localConfig.integrations?.facebook?.pageId && localConfig.integrations?.facebook?.accessToken
-                                                    ? 'bg-green-100 text-green-700'
-                                                    : localConfig.integrations?.facebook?.enabled
-                                                        ? 'bg-yellow-100 text-yellow-700'
-                                                        : 'bg-slate-200 text-slate-500'
+                                                ? 'bg-green-100 text-green-700'
+                                                : localConfig.integrations?.facebook?.enabled
+                                                    ? 'bg-yellow-100 text-yellow-700'
+                                                    : 'bg-slate-200 text-slate-500'
                                                 }`}>
                                                 {localConfig.integrations?.facebook?.enabled && localConfig.integrations?.facebook?.pageId && localConfig.integrations?.facebook?.accessToken
                                                     ? 'Configured'
@@ -990,6 +1013,110 @@ export const Settings: React.FC<SettingsProps> = ({ config, onSave }) => {
                         )}
                     </div>
 
+                    {/* Shopify Integration Section */}
+                    <div className="rounded-xl overflow-hidden shadow-sm">
+                        <SectionHeader id="shopify" label="Shopify & E-commerce" icon={ShoppingBag} />
+                        {activeSection === 'shopify' && (
+                            <div className="p-6 bg-white border-x border-b border-slate-200 space-y-6 animate-in slide-in-from-top-2 duration-200">
+
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                                    <h4 className="flex items-center gap-2 text-sm font-bold text-green-800 mb-1">
+                                        <ShoppingBag size={16} />
+                                        Shopify Ready 🛍️
+                                    </h4>
+                                    <p className="text-xs text-green-700">
+                                        Turn your chat widget into an e-commerce powerhouse. Track carts, recover abandoned checkouts, and boost sales.
+                                    </p>
+                                </div>
+
+                                {/* Step 1: Install Widget */}
+                                <div>
+                                    <h4 className="text-sm font-bold text-slate-800 mb-2">1. Install on Shopify Store</h4>
+                                    <p className="text-xs text-slate-500 mb-3">Copy this code and paste it into your theme's <code>theme.liquid</code> file, just before the closing <code>&lt;/body&gt;</code> tag.</p>
+
+                                    <div className="relative group">
+                                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={handleCopyEmbed}
+                                                className="bg-white/10 hover:bg-white/20 p-1.5 rounded z-10 text-slate-300 hover:text-white backdrop-blur-sm transition-colors"
+                                                title="Copy Code"
+                                            >
+                                                {copiedEmbed ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+                                            </button>
+                                        </div>
+                                        <pre className="bg-slate-900 text-slate-300 p-4 rounded-lg text-[10px] sm:text-xs font-mono overflow-x-auto border border-slate-800 leading-relaxed">
+                                            {generateEmbedCode()}
+                                        </pre>
+                                    </div>
+                                    <div className="mt-2 text-[10px] text-slate-400">
+                                        Works with: <span className="text-slate-600 font-medium">Dawn, Impulse, Prestige, and all 2.0 Themes</span>
+                                    </div>
+                                </div>
+
+                                {/* Step 2: Add Cart Tracking */}
+                                <div className="pt-4 border-t border-slate-100">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h4 className="text-sm font-bold text-slate-800">2. Enable Cart Tracking</h4>
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 uppercase">Recommended</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-3">
+                                        Paste this script <strong>immediately after</strong> the embed code above. This enables real-time cart viewing for your agents.
+                                    </p>
+
+                                    <div className="bg-slate-900 rounded-lg border border-slate-800 overflow-hidden">
+                                        <div className="flex items-center justify-between px-3 py-2 bg-slate-800/50 border-b border-slate-700/50">
+                                            <span className="text-[10px] font-mono text-slate-400">shopify-tracking.js</span>
+                                            <button
+                                                onClick={() => navigator.clipboard.writeText(`<script>
+  window.addEventListener('load', function() {
+    if (window.Shopify && window.talkChat) {
+      // Track Cart Adds
+      document.addEventListener('cart:add', function(evt) {
+         window.talkChat.trackEvent('cart_add', evt.detail);
+      });
+      // Track Page Views
+      if (typeof window.meta !== 'undefined' && window.meta.page.pageType === 'product') {
+         window.talkChat.trackEvent('product_view', {
+            productId: window.meta.product.id,
+            price: window.meta.product.variants[0].price
+         });
+      }
+    }
+  });
+</script>`)}
+                                                className="text-slate-400 hover:text-white transition-colors"
+                                            >
+                                                <Copy size={12} />
+                                            </button>
+                                        </div>
+                                        <pre className="p-4 text-[10px] font-mono text-blue-300 overflow-x-auto leading-relaxed">
+                                            {`<script>
+  window.addEventListener('load', function() {
+    if (window.Shopify && window.talkChat) {
+      
+      // Track Cart Adds (Standard Shopify Events)
+      document.addEventListener('cart:add', function(evt) {
+         window.talkChat.trackEvent('cart_add', evt.detail);
+      });
+
+      // Track Product Views
+      if (typeof window.meta !== 'undefined' && window.meta.page.pageType === 'product') {
+         window.talkChat.trackEvent('product_view', {
+            productId: window.meta.product.id,
+            productName: window.meta.product.variants[0].name,
+            price: window.meta.product.variants[0].price
+         });
+      }
+    }
+  });
+</script>`}
+                                        </pre>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     {/* AI Settings Section */}
                     <div className="rounded-xl overflow-hidden shadow-sm">
                         <SectionHeader id="ai" label="AI Settings & Knowledge" icon={Sparkles} />
@@ -1078,12 +1205,19 @@ export const Settings: React.FC<SettingsProps> = ({ config, onSave }) => {
                                                 <div className="flex justify-between items-center mb-2">
                                                     <label className="block text-xs font-semibold text-slate-500 uppercase">Documents</label>
                                                     <button
-                                                        onClick={handleSimulateUploadKB}
+                                                        onClick={() => kbInputRef.current?.click()}
                                                         className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100 flex items-center space-x-1"
                                                     >
                                                         <Upload size={10} />
                                                         <span>Upload</span>
                                                     </button>
+                                                    <input
+                                                        type="file"
+                                                        ref={kbInputRef}
+                                                        onChange={handleFileUploadKB}
+                                                        className="hidden"
+                                                        accept=".txt,.csv,.md,.json"
+                                                    />
                                                 </div>
 
                                                 <div className="bg-slate-50 rounded-lg border border-slate-200 divide-y divide-slate-100">

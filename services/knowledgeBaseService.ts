@@ -40,35 +40,42 @@ class KnowledgeBaseService {
     }
 
     /**
-     * Sycs a tenant's knowledge base. 
-     * This will chunk the text and send it to a backend function to generate embeddings.
+     * Syncs a tenant's manual text knowledge base.
      */
     async syncTextKnowledge(tenantId: string, fullText: string): Promise<{ success: boolean; error?: any }> {
         try {
-            // 1. Clear existing knowledge for this tenant
-            await supabase.rpc('clear_tenant_knowledge', { p_tenant_id: tenantId });
+            // 1. Clear ONLY the manual entry knowledge for this tenant
+            // We use a specific RPC or filter by metadata in the future.
+            // For now, let's just use the process-knowledge function which handles updates.
 
-            // 2. Chunk the text
-            const chunks = this.chunkText(fullText);
-
-            if (chunks.length === 0) return { success: true };
-
-            // 3. Send chunks to Edge Function to generate embeddings and save
-            // We use an Edge Function because generating embeddings requires an API key 
-            // that should stay on the backend.
             const { data, error } = await supabase.functions.invoke('process-knowledge', {
                 body: {
                     tenant_id: tenantId,
-                    chunks: chunks.map(content => ({ content, metadata: { source: 'manual_entry' } }))
+                    content: fullText,
+                    filename: 'manual_entry.txt',
+                    metadata: { source: 'manual_entry' }
                 }
             });
 
             if (error) throw error;
+            if (data.error) throw new Error(data.error);
 
             return { success: true };
-        } catch (error) {
-            console.error('[KB Service] Sync Error:', error);
-            return { success: false, error };
+        } catch (error: any) {
+            console.error('[KB Service] Sync Error Details:', {
+                message: error.message,
+                status: error.status,
+                context: error.context
+            });
+
+            // Try to extract a more specific error message from the response body if available
+            let errorMessage = "Synchronization failed. Please check your AI API key and internet connection.";
+            if (error.context && typeof error.context === 'object') {
+                // Supabase FunctionsHttpError often puts the response text in context
+                errorMessage = `Server Error: ${error.message}`;
+            }
+
+            return { success: false, error: { message: errorMessage, original: error } };
         }
     }
 

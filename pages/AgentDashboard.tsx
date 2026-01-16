@@ -3,11 +3,14 @@ import { supabase } from '../services/supabaseClient';
 import {
     MessageSquare, Clock, TrendingUp, Users, Star, Activity, CheckCircle,
     AlertCircle, BarChart3, Zap, Send, MoreVertical, User, Phone,
-    Mail, MapPin, Globe, Monitor, ArrowUpCircle, FileText, Plus, X, Shield
+    Mail, MapPin, Globe, Monitor, ArrowUpCircle, FileText, Plus, X, Shield,
+    Info, MousePointer
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { VisitorInfoPanel } from '../components/VisitorInfoPanel';
 import { useWidgetConfig } from '../hooks/useWidgetConfig';
+import { HeatmapOverlay } from '../components/HeatmapOverlay';
+import { globalChatService } from '../services/globalChatRealtimeService';
 
 interface AgentStats {
     totalChats: number;
@@ -17,7 +20,6 @@ interface AgentStats {
     totalMessages: number;
     satisfactionRating: number;
 }
-
 interface Chat {
     id: string;
     visitor_id: string;
@@ -39,6 +41,7 @@ interface Chat {
         name?: string;
     };
     resolution_category?: string;
+    tenant_id?: string | null;
 }
 
 interface Message {
@@ -57,7 +60,6 @@ interface Note {
     created_by: string;
     created_at: string;
 }
-
 export const AgentDashboard: React.FC = () => {
     const [agentInfo, setAgentInfo] = useState<any>(null);
     const [stats, setStats] = useState<AgentStats>({
@@ -78,6 +80,9 @@ export const AgentDashboard: React.FC = () => {
     const [showNotes, setShowNotes] = useState(false);
     const [showEscalate, setShowEscalate] = useState(false);
     const [messagesLoading, setMessagesLoading] = useState(false);
+    const [typingPreview, setTypingPreview] = useState<string | null>(null);
+    const [showHeatmap, setShowHeatmap] = useState(false);
+    const [tenantPlan, setTenantPlan] = useState<'free' | 'pro' | 'enterprise'>('free');
     const messagesEndRef = React.useRef<HTMLDivElement>(null);
     const { config } = useWidgetConfig();
 
@@ -120,9 +125,28 @@ export const AgentDashboard: React.FC = () => {
             )
             .subscribe();
 
+        // Subscribing to Typing Preview for selected chat
+        let typingSubscription: any = null;
+        if (selectedChat) {
+            console.log('[Agent] Subscribing to typing preview for:', selectedChat.id);
+            typingSubscription = globalChatService.subscribeToTypingPreview(
+                selectedChat.id,
+                (content) => {
+                    setTypingPreview(content);
+                    // Clear after 3s of no update
+                    if ((window as any).typingAgentTimeout) clearTimeout((window as any).typingAgentTimeout);
+                    (window as any).typingAgentTimeout = setTimeout(() => setTypingPreview(null), 3000);
+                }
+            );
+        }
+
         return () => {
             chatsSubscription.unsubscribe();
             messagesSubscription.unsubscribe();
+            if (typingSubscription) {
+                globalChatService.unsubscribe(`session:${selectedChat?.id}`);
+            }
+            setTypingPreview(null);
         };
     }, [selectedChat]);
 
@@ -135,6 +159,18 @@ export const AgentDashboard: React.FC = () => {
                 .select('*')
                 .eq('user_id', user.id)
                 .single();
+
+            if (profile?.tenant_id) {
+                const { data: tenant } = await supabase
+                    .from('tenants')
+                    .select('subscription_plan')
+                    .eq('id', profile.tenant_id)
+                    .single();
+                if (tenant) setTenantPlan(tenant.subscription_plan as any);
+            } else {
+                // Global Admins are Enterprise context
+                setTenantPlan('enterprise');
+            }
 
             setAgentInfo({ ...user, profile });
         }
@@ -561,6 +597,24 @@ export const AgentDashboard: React.FC = () => {
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <button
+                                                onClick={() => {
+                                                    if (tenantPlan === 'free') {
+                                                        alert("The Behavioral Heatmap is a Pro feature. Please upgrade your plan to access real-time visitor insights.");
+                                                        return;
+                                                    }
+                                                    setShowHeatmap(!showHeatmap);
+                                                }}
+                                                className={`p-2 rounded-xl transition-all relative ${showHeatmap ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                                                title={tenantPlan === 'free' ? "Upgrade to Pro for Heatmap" : "Behavioral Heatmap"}
+                                            >
+                                                <MousePointer className="w-5 h-5" />
+                                                {tenantPlan === 'free' && (
+                                                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full border-2 border-slate-900 flex items-center justify-center">
+                                                        <div className="w-1 h-1 bg-white rounded-full" />
+                                                    </div>
+                                                )}
+                                            </button>
+                                            <button
                                                 onClick={() => setShowNotes(!showNotes)}
                                                 className={`p-2 rounded-xl transition-all ${showNotes ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
                                                 title="Visitor Notes"
@@ -586,7 +640,15 @@ export const AgentDashboard: React.FC = () => {
                                     </div>
 
                                     {/* Messages Scroll Area */}
-                                    <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]">
+                                    <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')] relative">
+                                        {showHeatmap && (
+                                            <div className="absolute inset-0 z-50 p-6">
+                                                <HeatmapOverlay
+                                                    sessionId={selectedChat.id}
+                                                    tenantId={selectedChat.tenant_id}
+                                                />
+                                            </div>
+                                        )}
                                         {messagesLoading ? (
                                             <div className="h-full flex items-center justify-center">
                                                 <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -651,6 +713,26 @@ export const AgentDashboard: React.FC = () => {
 
                                     {/* Input Container */}
                                     <div className="p-4 bg-slate-900 border-t border-white/5 relative z-20">
+                                        {/* Typing Preview Overlay */}
+                                        <AnimatePresence>
+                                            {typingPreview && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    exit={{ opacity: 0, y: 10 }}
+                                                    className="absolute bottom-full left-0 right-0 p-3 bg-slate-900/90 backdrop-blur-md border-t border-white/5 flex items-center gap-3"
+                                                >
+                                                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-500/10 rounded-full">
+                                                        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                                                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter">Typing</span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-400 italic truncate flex-1">
+                                                        {typingPreview}
+                                                    </p>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+
                                         <form onSubmit={handleSendMessage} className="flex gap-2">
                                             <input
                                                 type="text"
@@ -707,8 +789,8 @@ export const AgentDashboard: React.FC = () => {
                                                 <div className="bg-slate-900/40 p-2 rounded-lg">
                                                     <span className="text-[9px] text-slate-500 font-bold block uppercase mb-1">Sentiment</span>
                                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${selectedChat.ai_sentiment === 'Positive' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                                                            selectedChat.ai_sentiment === 'Negative' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                                                                'bg-slate-500/20 text-slate-400 border border-slate-500/30'
+                                                        selectedChat.ai_sentiment === 'Negative' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                                                            'bg-slate-500/20 text-slate-400 border border-slate-500/30'
                                                         }`}>
                                                         {selectedChat.ai_sentiment}
                                                     </span>

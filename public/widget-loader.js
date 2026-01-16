@@ -75,6 +75,28 @@
         }
     });
 
+    // HEATMAP: Capture clicks on the parent page and send to widget
+    window.addEventListener('click', function (e) {
+        if (!iframe || !iframe.contentWindow) return;
+
+        // Calculate relative coordinates (percentages)
+        var xPct = (e.pageX / document.documentElement.scrollWidth) * 100;
+        var yPct = (e.pageY / document.documentElement.scrollHeight) * 100;
+
+        iframe.contentWindow.postMessage({
+            type: 'TKC_VISITOR_CLICK',
+            data: {
+                x_pct: xPct,
+                y_pct: yPct,
+                url: window.location.href,
+                viewport_width: window.innerWidth,
+                viewport_height: window.innerHeight,
+                element_tag: e.target.tagName,
+                element_id: e.target.id
+            }
+        }, '*');
+    }, true);
+
     // Add to page
     document.body.appendChild(iframe);
 
