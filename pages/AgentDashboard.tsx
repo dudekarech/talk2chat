@@ -4,7 +4,7 @@ import {
     MessageSquare, Clock, TrendingUp, Users, Star, Activity, CheckCircle,
     AlertCircle, BarChart3, Zap, Send, MoreVertical, User, Phone,
     Mail, MapPin, Globe, Monitor, ArrowUpCircle, FileText, Plus, X, Shield,
-    Info, MousePointer
+    Info, MousePointer, Instagram, Facebook, MessageCircle
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { VisitorInfoPanel } from '../components/VisitorInfoPanel';
@@ -26,6 +26,8 @@ interface Chat {
     visitor_name: string;
     visitor_email: string;
     status: string;
+    channel?: 'web' | 'mobile' | 'whatsapp' | 'instagram' | 'facebook' | 'email';
+    subject?: string;
     assigned_to?: string;
     created_at: string;
     last_message_at: string;
@@ -419,8 +421,19 @@ export const AgentDashboard: React.FC = () => {
         );
     }
 
+    const getChannelIcon = (channel?: string) => {
+        switch (channel) {
+            case 'whatsapp': return <MessageCircle className="w-4 h-4 text-green-500" />;
+            case 'instagram': return <Instagram className="w-4 h-4 text-pink-500" />;
+            case 'facebook': return <Facebook className="w-4 h-4 text-blue-500" />;
+            case 'email': return <Mail className="w-4 h-4 text-amber-500" />;
+            case 'mobile': return <ArrowUpCircle className="w-4 h-4 text-purple-400" />;
+            default: return <Globe className="w-4 h-4 text-slate-400" />;
+        }
+    };
+
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-blue-500/30">
+        <div className="min-h-screen bg-[#070b14] text-slate-300 font-sans selection:bg-blue-500/30">
             {/* Background Decorations */}
             <div className="fixed inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px]" />
@@ -544,6 +557,7 @@ export const AgentDashboard: React.FC = () => {
                                                             <p className={`text-sm font-bold truncate ${selectedChat?.id === chat.id ? 'text-white' : 'text-slate-200'}`}>
                                                                 {chat.visitor_name || 'Anonymous Visitor'}
                                                             </p>
+                                                            {getChannelIcon(chat.channel)}
                                                             {chat.notes_count ? chat.notes_count > 0 && (
                                                                 <FileText className={`w-3 h-3 flex-shrink-0 ${selectedChat?.id === chat.id ? 'text-blue-100' : 'text-purple-400'}`} />
                                                             ) : null}
@@ -556,7 +570,7 @@ export const AgentDashboard: React.FC = () => {
                                                         </span>
                                                     </div>
                                                     <p className={`text-xs truncate ${selectedChat?.id === chat.id ? 'text-blue-100/80' : 'text-slate-400'}`}>
-                                                        {chat.status === 'completed' ? 'Conversation Resolved' : (chat.visitor_email || 'No contact info')}
+                                                        {chat.channel === 'email' ? (chat.subject || 'No Subject') : (chat.status === 'completed' ? 'Conversation Resolved' : (chat.visitor_email || 'No contact info'))}
                                                     </p>
                                                 </div>
                                                 {chat.unread_count && chat.unread_count > 0 && (
@@ -592,7 +606,12 @@ export const AgentDashboard: React.FC = () => {
                                                     <h3 className="font-bold text-white leading-none">{selectedChat.visitor_name || 'Anonymous'}</h3>
                                                     <span className="text-[10px] font-bold text-green-500 uppercase tracking-widest bg-green-500/10 px-1.5 py-0.5 rounded">Live</span>
                                                 </div>
-                                                <p className="text-xs text-slate-400 mt-1">{selectedChat.visitor_email || 'Inbound from Web Widget'}</p>
+                                                <p className="text-xs text-slate-400 mt-1">
+                                                    {selectedChat.channel === 'whatsapp' ? 'Inbound from WhatsApp' :
+                                                        selectedChat.channel === 'instagram' ? 'Inbound from Instagram' :
+                                                            selectedChat.channel === 'facebook' ? 'Inbound from Messenger' :
+                                                                'Inbound from Web Widget'}
+                                                </p>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">

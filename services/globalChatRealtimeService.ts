@@ -12,7 +12,8 @@ export interface ChatSession {
     visitor_email?: string;
     visitor_id: string;
     status: 'open' | 'pending' | 'resolved' | 'active' | 'waiting' | 'unassigned' | 'escalated' | 'expired';
-    channel: 'web' | 'mobile';
+    channel: 'web' | 'mobile' | 'whatsapp' | 'instagram' | 'facebook' | 'email';
+    subject?: string;
     assigned_to?: string;
     tenant_id?: string | null;
     tags: string[];

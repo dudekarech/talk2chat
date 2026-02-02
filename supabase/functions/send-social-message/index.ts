@@ -52,12 +52,30 @@ serve(async (req) => {
         const platform = session.channel;
         const integrations = config.integrations;
 
-        // 4. Send to Meta
+        // 4. Send to Provider
         let result;
         if (platform === 'whatsapp') {
             result = await sendWhatsApp(recipientId, content, integrations.whatsapp);
         } else if (platform === 'instagram' || platform === 'facebook') {
             result = await sendMessenger(recipientId, content, integrations[platform]);
+        } else if (platform === 'email') {
+            const subject = session.subject || 'Re: Support Request';
+            result = await sendEmail(recipientId, subject, content, integrations.email);
+        }
+
+        console.log(`[Outbound] ${platform} Response:`, JSON.stringify(result));
+
+        // 5. Update message with provider ID
+        const providerId = result?.messages?.[0]?.id || result?.message_id || result?.id;
+
+        if (providerId) {
+            await supabase.from('global_chat_messages').update({
+                metadata: {
+                    ...(record.metadata || {}),
+                    provider_message_id: providerId,
+                    sent_at: new Date().toISOString()
+                }
+            }).eq('id', record.id);
         }
 
         return new Response(JSON.stringify(result), {
@@ -97,6 +115,29 @@ async function sendMessenger(to: string, text: string, config: any) {
         body: JSON.stringify({
             recipient: { id: to },
             message: { text: text }
+        }),
+    });
+    return res.json();
+}
+
+async function sendEmail(to: string, subject: string, text: string, config: any) {
+    console.log(`[Outbound Email] To: ${to}, Subject: ${subject}`);
+
+    if (!config?.apiKey) {
+        return { error: 'Email API Key not configured' };
+    }
+
+    const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${config.apiKey}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            from: config.fromEmail || 'TalkChat Support <support@talkchat.io>',
+            to: [to],
+            subject: subject,
+            text: text,
         }),
     });
     return res.json();

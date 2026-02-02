@@ -74,7 +74,7 @@ export const SignupPage: React.FC = () => {
         try {
             // Step 1: Create auth user
             const { data: authData, error: authError } = await supabase.auth.signUp({
-                email: formData.email,
+                email: formData.email.trim(),
                 password: formData.password,
                 options: {
                     data: {

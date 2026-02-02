@@ -18,7 +18,7 @@ export const LoginPage: React.FC = () => {
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password
       });
 

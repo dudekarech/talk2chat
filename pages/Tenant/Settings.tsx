@@ -106,7 +106,12 @@ export const Settings: React.FC = () => {
                     .single();
 
                 if (widgetData?.integrations) {
-                    setIntegrations(widgetData.integrations);
+                    setIntegrations(prev => ({
+                        ...prev,
+                        ...widgetData.integrations,
+                        whatsapp: { ...prev.whatsapp, ...(widgetData.integrations.whatsapp || {}) },
+                        instagram: { ...prev.instagram, ...(widgetData.integrations.instagram || {}) }
+                    }));
                 }
             }
         }
@@ -515,10 +520,10 @@ export const Settings: React.FC = () => {
                                         <input
                                             type="checkbox"
                                             className="sr-only peer"
-                                            checked={integrations.whatsapp.enabled}
+                                            checked={integrations.whatsapp?.enabled || false}
                                             onChange={(e) => setIntegrations({
                                                 ...integrations,
-                                                whatsapp: { ...integrations.whatsapp, enabled: e.target.checked }
+                                                whatsapp: { ...(integrations.whatsapp || {}), enabled: e.target.checked }
                                             })}
                                         />
                                         <div className="w-12 h-6 bg-slate-800 rounded-full peer peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-6"></div>
@@ -530,8 +535,8 @@ export const Settings: React.FC = () => {
                                         <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Phone Number ID</label>
                                         <input
                                             type="text"
-                                            value={integrations.whatsapp.phoneNumberId}
-                                            onChange={(e) => setIntegrations({ ...integrations, whatsapp: { ...integrations.whatsapp, phoneNumberId: e.target.value } })}
+                                            value={integrations.whatsapp?.phoneNumberId || ''}
+                                            onChange={(e) => setIntegrations({ ...integrations, whatsapp: { ...(integrations.whatsapp || {}), phoneNumberId: e.target.value } })}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-emerald-500/40 focus:outline-none"
                                             placeholder="1234567890..."
                                         />
@@ -540,8 +545,8 @@ export const Settings: React.FC = () => {
                                         <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Meta API System Token</label>
                                         <input
                                             type="password"
-                                            value={integrations.whatsapp.apiKey}
-                                            onChange={(e) => setIntegrations({ ...integrations, whatsapp: { ...integrations.whatsapp, apiKey: e.target.value } })}
+                                            value={integrations.whatsapp?.apiKey || ''}
+                                            onChange={(e) => setIntegrations({ ...integrations, whatsapp: { ...(integrations.whatsapp || {}), apiKey: e.target.value } })}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-emerald-500/40 focus:outline-none"
                                             placeholder="EAABw..."
                                         />
@@ -550,8 +555,8 @@ export const Settings: React.FC = () => {
                                         <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Webhook Verify Token</label>
                                         <input
                                             type="text"
-                                            value={integrations.whatsapp.verifyToken}
-                                            onChange={(e) => setIntegrations({ ...integrations, whatsapp: { ...integrations.whatsapp, verifyToken: e.target.value } })}
+                                            value={integrations.whatsapp?.verifyToken || ''}
+                                            onChange={(e) => setIntegrations({ ...integrations, whatsapp: { ...(integrations.whatsapp || {}), verifyToken: e.target.value } })}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-emerald-500/40 focus:outline-none"
                                             placeholder="your_secret_token"
                                         />
@@ -575,10 +580,10 @@ export const Settings: React.FC = () => {
                                         <input
                                             type="checkbox"
                                             className="sr-only peer"
-                                            checked={integrations.instagram.enabled}
+                                            checked={integrations.instagram?.enabled || false}
                                             onChange={(e) => setIntegrations({
                                                 ...integrations,
-                                                instagram: { ...integrations.instagram, enabled: e.target.checked }
+                                                instagram: { ...(integrations.instagram || {}), enabled: e.target.checked }
                                             })}
                                         />
                                         <div className="w-12 h-6 bg-slate-800 rounded-full peer peer-checked:bg-pink-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-6"></div>
@@ -590,8 +595,8 @@ export const Settings: React.FC = () => {
                                         <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Account ID</label>
                                         <input
                                             type="text"
-                                            value={integrations.instagram.pageId}
-                                            onChange={(e) => setIntegrations({ ...integrations, instagram: { ...integrations.instagram, pageId: e.target.value } })}
+                                            value={integrations.instagram?.pageId || ''}
+                                            onChange={(e) => setIntegrations({ ...integrations, instagram: { ...(integrations.instagram || {}), pageId: e.target.value } })}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-pink-500/40 focus:outline-none"
                                             placeholder="IG-123..."
                                         />
@@ -600,8 +605,8 @@ export const Settings: React.FC = () => {
                                         <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Access Token</label>
                                         <input
                                             type="password"
-                                            value={integrations.instagram.accessToken}
-                                            onChange={(e) => setIntegrations({ ...integrations, instagram: { ...integrations.instagram, accessToken: e.target.value } })}
+                                            value={integrations.instagram?.accessToken || ''}
+                                            onChange={(e) => setIntegrations({ ...integrations, instagram: { ...(integrations.instagram || {}), accessToken: e.target.value } })}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-pink-500/40 focus:outline-none"
                                             placeholder="EAABw..."
                                         />

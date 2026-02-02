@@ -162,10 +162,77 @@ async function processMessenger(payload: any, supabase: any) {
 }
 
 async function triggerAIResponse(session: any, text: string, config: any, supabase: any) {
-    // This logic mimics the ai-chat function but sends output back to Social API
-    // Part 1: Logic to get AI response would go here (calling ai-chat internal logic)
-    // Part 2: Sending message back to WhatsApp/Meta
-    console.log(`Triggering AI for ${session.channel}: ${text}`);
+    console.log(`Triggering AI for ${session.channel} (Session: ${session.id})`);
 
-    // For now, we'll just log. Real implementation involves the Meta Send API.
+    try {
+        // 1. Check if an agent is assigned
+        const { data: sessionData } = await supabase
+            .from('global_chat_sessions')
+            .select('assigned_to, status')
+            .eq('id', session.id)
+            .single();
+
+        if (sessionData?.assigned_to) {
+            console.log(`[AI] Session ${session.id} is assigned to agent ${sessionData.assigned_to}. Skipping AI auto-reply.`);
+            return;
+        }
+
+        // 2. Call AI Function
+        const aiUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-chat`;
+
+        // Fetch history for context
+        const { data: history } = await supabase
+            .from('global_chat_messages')
+            .select('sender_type, content')
+            .eq('session_id', session.id)
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+        const formattedHistory = history ? history.reverse().map((h: any) => ({
+            role: h.sender_type === 'visitor' ? 'user' : 'model',
+            parts: h.content
+        })) : [];
+
+        const aiResponse = await fetch(aiUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: text,
+                history: formattedHistory,
+                instructions: config.knowledgeBase?.textContext || "You are a helpful assistant.",
+                provider: 'google', // Default to Gemini for speed/cost
+                modelName: 'gemini-1.5-flash',
+                tenant_id: session.tenant_id,
+                session_id: session.id
+            })
+        });
+
+        if (!aiResponse.ok) {
+            const errText = await aiResponse.text();
+            throw new Error(`AI Function Error: ${errText}`);
+        }
+
+        const aiData = await aiResponse.json();
+        const aiText = aiData.response;
+
+        if (aiText) {
+            // 2. Insert AI Reply to DB 
+            // This INSERT will trigger the 'send-social-message' Database Webhook if configured
+            const { error: insertError } = await supabase.from('global_chat_messages').insert({
+                session_id: session.id,
+                content: aiText,
+                sender_type: 'ai',
+                sender_name: config.botName || 'AI Assistant'
+            });
+
+            if (insertError) console.error('Failed to save AI reply:', insertError);
+            else console.log('AI Reply Saved & Queued:', aiText.substring(0, 50) + '...');
+        }
+
+    } catch (err) {
+        console.error('AI Trigger Failed:', err);
+    }
 }
