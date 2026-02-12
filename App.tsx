@@ -34,6 +34,9 @@ import { Cookies } from './pages/Cookies';
 import { About } from './pages/About';
 import { Careers } from './pages/Careers';
 import { WidgetEmbedPage } from './pages/WidgetEmbedPage';
+import { VisitorIntelligence } from './pages/GlobalAdmin/VisitorIntelligence';
+import { TenantIntelligence } from './pages/Tenant/TenantIntelligence';
+
 
 const App: React.FC = () => {
   // SPECIAL BYPASS: If loaded via /widget-embed (server path), render directly
@@ -74,7 +77,9 @@ const App: React.FC = () => {
             <Route path="analytics" element={<TenantDashboardHome />} /> {/* Placeholder */}
             <Route path="support" element={<SupportTickets />} />
             <Route path="notifications" element={<TenantNotifications />} />
+            <Route path="intelligence" element={<TenantIntelligence />} />
             <Route index element={<Navigate to="dashboard" replace />} />
+
           </Route>
 
           {/* Global Admin Routes */}
@@ -89,7 +94,9 @@ const App: React.FC = () => {
             <Route path="analytics" element={<Analytics />} />
             <Route path="security" element={<Security />} />
             <Route path="notifications" element={<Notifications />} />
+            <Route path="intelligence" element={<VisitorIntelligence />} />
             <Route path="tickets" element={<TicketManagement />} />
+
             <Route index element={<Navigate to="dashboard" replace />} />
           </Route>
 

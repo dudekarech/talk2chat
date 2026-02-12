@@ -138,6 +138,43 @@ class AnalyticsService {
         const { data, error } = await query;
         return { data: data || [], error };
     }
+
+    /**
+     * Get heatmap data for a specific page and tenant
+     */
+    async getHeatmapData(pageUrl: string, tenantId?: string | null) {
+        let query = supabase
+            .from('visitor_clicks')
+            .select('x_pct, y_pct, element_tag, created_at')
+            .eq('page_url', pageUrl)
+            .order('created_at', { ascending: false })
+            .limit(2000);
+
+        if (tenantId) {
+            query = query.eq('tenant_id', tenantId);
+        }
+
+        const { data, error } = await query;
+        return { data: data || [], error };
+    }
+
+    /**
+     * Get abandoned carts for a tenant
+     */
+    async getAbandonedCarts(tenantId?: string | null) {
+        let query = supabase
+            .from('abandoned_carts')
+            .select('*')
+            .order('updated_at', { ascending: false })
+            .limit(100);
+
+        if (tenantId) {
+            query = query.eq('tenant_id', tenantId);
+        }
+
+        const { data, error } = await query;
+        return { data: data || [], error };
+    }
 }
 
 export const analyticsService = new AnalyticsService();

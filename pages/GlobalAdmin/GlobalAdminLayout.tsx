@@ -12,12 +12,31 @@ import {
     LogOut,
     Search,
     MessageSquare,
-    LifeBuoy
+    LifeBuoy,
+    MousePointer
 } from 'lucide-react';
+import { supabase } from '../../services/globalChatRealtimeService';
 
 export const GlobalAdminLayout: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const [profile, setProfile] = React.useState<any>(null);
+
+    React.useEffect(() => {
+        loadProfile();
+    }, []);
+
+    const loadProfile = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            const { data } = await supabase
+                .from('user_profiles')
+                .select('*')
+                .eq('user_id', user.id)
+                .single();
+            setProfile(data);
+        }
+    };
 
     const menuItems = [
         { icon: LayoutDashboard, label: 'Overview', path: '/global/dashboard' },
@@ -29,6 +48,7 @@ export const GlobalAdminLayout: React.FC = () => {
         { icon: BarChart3, label: 'Analytics', path: '/global/analytics' },
         { icon: ShieldAlert, label: 'Security & Audit', path: '/global/security' },
         { icon: Bell, label: 'Notifications', path: '/global/notifications' },
+        { icon: MousePointer, label: 'Visitor Intel', path: '/global/intelligence' },
         { icon: LifeBuoy, label: 'Tickets', path: '/global/tickets' },
     ];
 
@@ -106,11 +126,11 @@ export const GlobalAdminLayout: React.FC = () => {
                         <div className="h-8 w-px bg-slate-700"></div>
                         <div className="flex items-center gap-3">
                             <div className="text-right hidden sm:block">
-                                <p className="text-sm font-medium text-white">Gilbert M.</p>
-                                <p className="text-xs text-slate-400">Super Admin</p>
+                                <p className="text-sm font-medium text-white">{profile?.name || 'Administrator'}</p>
+                                <p className="text-xs text-slate-400 capitalize">{profile?.role || 'Global Admin'}</p>
                             </div>
                             <div className="w-9 h-9 bg-slate-700 rounded-full border border-slate-600 flex items-center justify-center overflow-hidden">
-                                <img src="https://ui-avatars.com/api/?name=Gilbert+M&background=0D8ABC&color=fff" alt="Admin" />
+                                <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'Admin')}&background=0D8ABC&color=fff`} alt="Admin" />
                             </div>
                         </div>
                     </div>

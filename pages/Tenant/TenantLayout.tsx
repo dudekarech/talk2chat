@@ -11,7 +11,8 @@ import {
     Search,
     Bell,
     Menu,
-    LifeBuoy
+    LifeBuoy,
+    MousePointer
 } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { NotificationDropdown } from '../../components/NotificationDropdown';
@@ -76,6 +77,7 @@ export const TenantLayout: React.FC = () => {
         { icon: BarChart3, label: 'Analytics', path: '/tenant/analytics' },
         { icon: LifeBuoy, label: 'Support', path: '/tenant/support' },
         { icon: Bell, label: 'Notifications', path: '/tenant/notifications' },
+        { icon: MousePointer, label: 'Visitor Intel', path: '/tenant/intelligence' },
         { icon: Settings, label: 'Settings', path: '/tenant/settings' },
     ];
 

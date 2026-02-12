@@ -8,4 +8,5 @@ export { Users } from './Users';
 export { Analytics } from './Analytics';
 export { Security } from './Security';
 export { Notifications } from './Notifications';
+export { VisitorIntelligence } from './VisitorIntelligence';
 export { ProtectedRoute } from './ProtectedRoute';
