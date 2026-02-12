@@ -74,7 +74,7 @@ export class NotificationService {
             query = query.eq('target_type', 'all');
         }
 
-        const { data: notifications, error } = await query.order('created_at', { ascending: false });
+        const { data: notifications, error } = await query.order('created_at', { ascending: false }).limit(50);
 
         if (error) return { data: [], error };
 

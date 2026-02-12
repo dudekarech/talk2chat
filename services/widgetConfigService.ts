@@ -276,9 +276,24 @@ class WidgetConfigService {
         try {
             console.log('[WidgetConfig] Getting GLOBAL config (forcing tenant_id IS NULL)');
 
+            // SECURITY: Only fetch non-sensitive UI/Behavior settings
+            const PUBLIC_COLUMNS = `
+                id, tenant_id, config_key, primary_color, background_color, position, 
+                widget_shape, team_name, welcome_message, pre_chat_message, auto_open, 
+                auto_open_delay, auto_open_on_scroll, scroll_percentage, show_on_pages, 
+                hide_on_mobile, sound_notifications, require_name, require_email, 
+                custom_css, seasonal_theme, ai_enabled, ai_provider, ai_model, 
+                ai_temperature, ai_auto_respond, ai_greeting, ai_smart_suggestions, 
+                ai_sentiment_analysis, ai_language_detection, ai_knowledge_base,
+                track_visitors, gdpr_show_consent, gdpr_consent_text, gdpr_show_disclaimer,
+                gdpr_disclaimer_text, gdpr_disable_tracking, retention_period_days,
+                privacy_hide_ip, privacy_mask_data, captcha_site_key, max_sessions_per_hour,
+                message_throttle_seconds, integrations, updated_at
+            `;
+
             const { data, error } = await supabase
                 .from('global_widget_config')
-                .select('*') // Revert: Public config should NOT expose keys.
+                .select(PUBLIC_COLUMNS)
                 .eq('config_key', 'global_widget')
                 .is('tenant_id', null)
                 .maybeSingle();

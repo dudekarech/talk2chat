@@ -390,7 +390,8 @@ class GlobalChatRealtimeService {
             .from('global_chat_messages')
             .select('*')
             .eq('session_id', sessionId)
-            .order('created_at', { ascending: true });
+            .order('created_at', { ascending: true })
+            .limit(200);
 
         if (error) {
             console.error('[Realtime] Error fetching messages:', error);
@@ -449,7 +450,7 @@ class GlobalChatRealtimeService {
             query = query.eq('assigned_to', filters.assigned_to);
         }
 
-        const { data, error } = await query;
+        const { data, error } = await query.limit(100);
         console.log(`[Realtime] getSessions for tenantId: ${tenantId}. Found ${data?.length || 0} sessions.`);
 
         if (error) {

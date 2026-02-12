@@ -19,6 +19,8 @@ import { GlobalSharedInbox } from './pages/GlobalAdmin/GlobalSharedInbox';
 import { WidgetConfiguration } from './pages/GlobalAdmin/WidgetConfiguration';
 import { AgentDashboard } from './pages/AgentDashboard';
 import { RoleBasedRedirect } from './components/RoleBasedRedirect';
+import { AuthenticatedRoute } from './components/AuthenticatedRoute';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { TenantsManagement } from './pages/GlobalAdmin/TenantsManagement';
 import { TenantLayout } from './pages/Tenant/TenantLayout';
 import { TenantDashboardHome } from './pages/Tenant/TenantDashboardHome';
@@ -41,59 +43,61 @@ const App: React.FC = () => {
   }
 
   return (
-    <HashRouter>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route path="/app" element={<MainApp />} />
+    <ErrorBoundary>
+      <HashRouter>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/app" element={<MainApp />} />
 
-        {/* Static Pages */}
-        <Route path="/privacy" element={<Privacy />} />
-        <Route path="/terms" element={<Terms />} />
-        <Route path="/cookies" element={<Cookies />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/careers" element={<Careers />} />
+          {/* Static Pages */}
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/cookies" element={<Cookies />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/careers" element={<Careers />} />
 
-        {/* Role-based dashboard redirect */}
-        <Route path="/dashboard" element={<RoleBasedRedirect />} />
+          {/* Role-based dashboard redirect */}
+          <Route path="/dashboard" element={<RoleBasedRedirect />} />
 
-        {/* Agent Dashboard */}
-        <Route path="/agent/dashboard" element={<AgentDashboard />} />
+          {/* Agent Dashboard */}
+          <Route path="/agent/dashboard" element={<AuthenticatedRoute><AgentDashboard /></AuthenticatedRoute>} />
 
-        {/* Tenant Routes */}
-        <Route path="/tenant" element={<TenantLayout />}>
-          <Route path="dashboard" element={<TenantDashboardHome />} />
-          <Route path="widget" element={<TenantWidgetConfiguration />} />
-          <Route path="team" element={<Users />} />
-          <Route path="chats" element={<GlobalSharedInbox isGlobalMode={false} />} />
-          <Route path="settings" element={<TenantSettings />} />
-          <Route path="analytics" element={<TenantDashboardHome />} /> {/* Placeholder */}
-          <Route path="support" element={<SupportTickets />} />
-          <Route path="notifications" element={<TenantNotifications />} />
-          <Route index element={<Navigate to="dashboard" replace />} />
-        </Route>
+          {/* Tenant Routes */}
+          <Route path="/tenant" element={<TenantLayout />}>
+            <Route path="dashboard" element={<TenantDashboardHome />} />
+            <Route path="widget" element={<TenantWidgetConfiguration />} />
+            <Route path="team" element={<Users />} />
+            <Route path="chats" element={<GlobalSharedInbox isGlobalMode={false} />} />
+            <Route path="settings" element={<TenantSettings />} />
+            <Route path="analytics" element={<TenantDashboardHome />} /> {/* Placeholder */}
+            <Route path="support" element={<SupportTickets />} />
+            <Route path="notifications" element={<TenantNotifications />} />
+            <Route index element={<Navigate to="dashboard" replace />} />
+          </Route>
 
-        {/* Global Admin Routes */}
-        <Route path="/global/admin" element={<GlobalAdminLogin />} />
-        <Route path="/global" element={<ProtectedRoute><GlobalAdminLayout /></ProtectedRoute>}>
-          <Route path="dashboard" element={<DashboardHome />} />
-          <Route path="inbox" element={<GlobalSharedInbox isGlobalMode={true} />} />
-          <Route path="widget" element={<WidgetConfiguration forceGlobal={true} />} />
-          <Route path="tenants" element={<TenantsManagement />} />
-          <Route path="billing" element={<Billing />} />
-          <Route path="users" element={<Users />} />
-          <Route path="analytics" element={<Analytics />} />
-          <Route path="security" element={<Security />} />
-          <Route path="notifications" element={<Notifications />} />
-          <Route path="tickets" element={<TicketManagement />} />
-          <Route index element={<Navigate to="dashboard" replace />} />
-        </Route>
+          {/* Global Admin Routes */}
+          <Route path="/global/admin" element={<GlobalAdminLogin />} />
+          <Route path="/global" element={<ProtectedRoute><GlobalAdminLayout /></ProtectedRoute>}>
+            <Route path="dashboard" element={<DashboardHome />} />
+            <Route path="inbox" element={<GlobalSharedInbox isGlobalMode={true} />} />
+            <Route path="widget" element={<WidgetConfiguration forceGlobal={true} />} />
+            <Route path="tenants" element={<TenantsManagement />} />
+            <Route path="billing" element={<Billing />} />
+            <Route path="users" element={<Users />} />
+            <Route path="analytics" element={<Analytics />} />
+            <Route path="security" element={<Security />} />
+            <Route path="notifications" element={<Notifications />} />
+            <Route path="tickets" element={<TicketManagement />} />
+            <Route index element={<Navigate to="dashboard" replace />} />
+          </Route>
 
-        <Route path="/widget-embed" element={<WidgetEmbedPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </HashRouter>
+          <Route path="/widget-embed" element={<WidgetEmbedPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </HashRouter>
+    </ErrorBoundary>
   );
 };
 
