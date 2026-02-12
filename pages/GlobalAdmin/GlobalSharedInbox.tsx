@@ -174,7 +174,8 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
         setupSubscription();
 
         return () => {
-            globalChatService.unsubscribeAll();
+            console.log('[Inbox] Cleaning up all_sessions subscription');
+            globalChatService.unsubscribe('all_sessions');
         };
     }, [isGlobalMode]);
 
@@ -387,7 +388,7 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
             content: messageContent,
             sender: 'agent',
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            senderName: 'Gilbert M.'
+            senderName: currentUserProfile?.name || 'Agent'
         };
         setMessages(prev => [...prev, optimisticMessage]);
 
@@ -396,8 +397,8 @@ export const GlobalSharedInbox: React.FC<GlobalSharedInboxProps> = ({ isGlobalMo
                 session_id: selectedChat,
                 content: messageContent,
                 sender_type: 'agent',
-                sender_id: 'admin_gilbert',
-                sender_name: 'Gilbert M.'
+                sender_id: currentUserProfile?.user_id || 'unknown_agent',
+                sender_name: currentUserProfile?.name || 'Agent'
             });
 
             if (error) {

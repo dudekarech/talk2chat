@@ -431,9 +431,14 @@ class GlobalChatRealtimeService {
         if (tenantId) {
             // Tenant admin sees their own sessions
             query = query.eq('tenant_id', tenantId);
-        } else {
-            // Global admin ONLY sees sessions where tenant_id IS NULL
+        } else if (filters?.forceGlobal || !tenantId) {
+            // Global admin context (profile.tenant_id is null)
+            // We must use .is('tenant_id', null) because in SQL null = null is false
             query = query.is('tenant_id', null);
+        } else {
+            // Super Admin overview: See everything across all tenants
+            // This case won't be hit if tenantId is null and we used the check above
+            console.log('[Realtime] Super Admin detected, showing all sessions in overview.');
         }
 
         if (filters?.status) {
@@ -445,6 +450,7 @@ class GlobalChatRealtimeService {
         }
 
         const { data, error } = await query;
+        console.log(`[Realtime] getSessions for tenantId: ${tenantId}. Found ${data?.length || 0} sessions.`);
 
         if (error) {
             console.error('[Realtime] Error fetching sessions:', error);

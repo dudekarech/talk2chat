@@ -85,6 +85,7 @@ export const AgentDashboard: React.FC = () => {
     const [typingPreview, setTypingPreview] = useState<string | null>(null);
     const [showHeatmap, setShowHeatmap] = useState(false);
     const [tenantPlan, setTenantPlan] = useState<'free' | 'pro' | 'enterprise'>('free');
+    const [isLoadingChats, setIsLoadingChats] = useState(false);
     const messagesEndRef = React.useRef<HTMLDivElement>(null);
     const { config } = useWidgetConfig();
 
@@ -97,60 +98,6 @@ export const AgentDashboard: React.FC = () => {
             scrollToBottom();
         }
     }, [messages]);
-
-    useEffect(() => {
-        loadAgentInfo();
-        loadStats();
-        loadChats();
-
-        // Real-time subscriptions
-        const chatsSubscription = supabase
-            .channel('agent-chats')
-            .on('postgres_changes',
-                { event: '*', schema: 'public', table: 'global_chat_sessions' },
-                () => {
-                    loadChats();
-                    loadStats();
-                }
-            )
-            .subscribe();
-
-        const messagesSubscription = supabase
-            .channel('agent-messages')
-            .on('postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'global_chat_messages' },
-                (payload) => {
-                    if (selectedChat && payload.new.session_id === selectedChat.id) {
-                        loadMessages(selectedChat.id);
-                    }
-                }
-            )
-            .subscribe();
-
-        // Subscribing to Typing Preview for selected chat
-        let typingSubscription: any = null;
-        if (selectedChat) {
-            console.log('[Agent] Subscribing to typing preview for:', selectedChat.id);
-            typingSubscription = globalChatService.subscribeToTypingPreview(
-                selectedChat.id,
-                (content) => {
-                    setTypingPreview(content);
-                    // Clear after 3s of no update
-                    if ((window as any).typingAgentTimeout) clearTimeout((window as any).typingAgentTimeout);
-                    (window as any).typingAgentTimeout = setTimeout(() => setTypingPreview(null), 3000);
-                }
-            );
-        }
-
-        return () => {
-            chatsSubscription.unsubscribe();
-            messagesSubscription.unsubscribe();
-            if (typingSubscription) {
-                globalChatService.unsubscribe(`session:${selectedChat?.id}`);
-            }
-            setTypingPreview(null);
-        };
-    }, [selectedChat]);
 
     const loadAgentInfo = async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -170,7 +117,6 @@ export const AgentDashboard: React.FC = () => {
                     .single();
                 if (tenant) setTenantPlan(tenant.subscription_plan as any);
             } else {
-                // Global Admins are Enterprise context
                 setTenantPlan('enterprise');
             }
 
@@ -180,18 +126,9 @@ export const AgentDashboard: React.FC = () => {
 
     const loadStats = async () => {
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+            if (!agentInfo) return;
+            const tenantId = agentInfo.profile?.tenant_id;
 
-            const { data: profile } = await supabase
-                .from('user_profiles')
-                .select('tenant_id')
-                .eq('user_id', user.id)
-                .single();
-
-            const tenantId = profile?.tenant_id;
-
-            // Count total active chats (any status)
             let totalQuery = supabase
                 .from('global_chat_sessions')
                 .select('*', { count: 'exact', head: true })
@@ -204,8 +141,6 @@ export const AgentDashboard: React.FC = () => {
             }
 
             const { count: totalCount, error: totalError } = await totalQuery;
-
-            // Count completed chats today
             const today = new Date().toISOString().split('T')[0];
             let completedQuery = supabase
                 .from('global_chat_sessions')
@@ -234,74 +169,54 @@ export const AgentDashboard: React.FC = () => {
             }
         } catch (error) {
             console.error('Error loading stats:', error);
-            // Keep stats at 0 if there's an error
         }
     };
 
     const loadChats = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data: profile } = await supabase
-            .from('user_profiles')
-            .select('tenant_id')
-            .eq('user_id', user.id)
-            .single();
-
-        const tenantId = profile?.tenant_id;
-
-        // Show active, pending, escalated AND completed chats
-        let query = supabase
-            .from('global_chat_sessions')
-            .select(`
-                *,
-                chat_notes(count)
-            `)
-            .in('status', ['active', 'pending', 'waiting', 'unassigned', 'escalated', 'completed', 'open'])
-            .order('created_at', { ascending: false });
-
-        if (tenantId) {
-            query = query.eq('tenant_id', tenantId);
-        } else {
-            query = query.is('tenant_id', null);
-        }
-
-        const { data, error } = await query;
-
-        if (error) {
-            console.error('Error loading chats:', error);
+        if (!agentInfo) {
+            console.log('[AgentDashboard] loadChats called before agentInfo was available.');
             return;
         }
+        setIsLoadingChats(true);
+        const tenantId = agentInfo.profile?.tenant_id || null;
+        console.log('[AgentDashboard] Loading chats for tenant context:', tenantId || 'GLOBAL');
 
-        // Map data to include notes_count
-        const chatsWithNotes = (data || []).map(chat => ({
-            ...chat,
-            notes_count: chat.chat_notes?.[0]?.count || 0
-        }));
+        try {
+            // For Super Admins (tenant_id == null), we want to see global chats
+            // If they see them in Shared Inbox, they should see them here.
+            const { sessions, error } = await globalChatService.getSessions();
 
-        setChats(chatsWithNotes);
+            if (error) {
+                console.error('[AgentDashboard] Error loading chats:', error);
+                return;
+            }
+
+            // Map and add notes count
+            const chatsWithNotes = sessions.map(chat => ({
+                ...chat,
+                notes_count: (chat as any).chat_notes?.[0]?.count || 0,
+                last_message_at: chat.last_activity || chat.created_at
+            }));
+
+            console.log(`[AgentDashboard] Successfully loaded ${chatsWithNotes.length} chats for context ${tenantId || 'GLOBAL'}.`);
+            setChats(chatsWithNotes as Chat[]);
+        } catch (err) {
+            console.error('[AgentDashboard] Unexpected error in loadChats:', err);
+        } finally {
+            setIsLoadingChats(false);
+        }
     };
 
     const loadMessages = async (sessionId: string) => {
         setMessagesLoading(true);
-        const { data } = await supabase
-            .from('global_chat_messages')
-            .select('*')
-            .eq('session_id', sessionId)
-            .order('created_at', { ascending: true });
-
-        setMessages(data || []);
+        const { messages: data } = await globalChatService.getMessages(sessionId);
+        setMessages(data as unknown as Message[] || []);
         setMessagesLoading(false);
     };
 
     const loadNotes = async (sessionId: string) => {
-        const { data } = await supabase
-            .from('chat_notes')
-            .select('*')
-            .eq('session_id', sessionId)
-            .order('created_at', { ascending: false });
-
-        setNotes(data || []);
+        const { notes: data } = await globalChatService.getNotes(sessionId);
+        setNotes(data as unknown as Note[] || []);
     };
 
     const handleSelectChat = async (chat: Chat) => {
@@ -309,16 +224,11 @@ export const AgentDashboard: React.FC = () => {
         await loadMessages(chat.id);
         await loadNotes(chat.id);
 
-        // Assign to self if unassigned
         if (!chat.assigned_to && agentInfo) {
-            await supabase
-                .from('global_chat_sessions')
-                .update({
-                    assigned_to: agentInfo.id,
-                    status: 'active'
-                })
-                .eq('id', chat.id);
-
+            await globalChatService.updateSession(chat.id, {
+                assigned_to: agentInfo.id,
+                status: 'active'
+            });
             await loadChats();
         }
     };
@@ -409,6 +319,101 @@ export const AgentDashboard: React.FC = () => {
         if (hour < 18) return 'Good Afternoon';
         return 'Good Evening';
     };
+
+    useEffect(() => {
+        loadAgentInfo();
+    }, []);
+
+    useEffect(() => {
+        if (agentInfo) {
+            loadStats();
+            loadChats();
+        }
+    }, [agentInfo]);
+
+    useEffect(() => {
+        if (!agentInfo) return;
+
+        const tenantId = agentInfo.profile?.tenant_id || null;
+        console.log('[AgentDashboard] Initializing real-time for tenant:', tenantId);
+
+        const channel = globalChatService.subscribeToAllSessions(
+            (newSession) => {
+                if (newSession.tenant_id === tenantId) {
+                    setChats(prev => {
+                        if (prev.some(c => c.id === newSession.id)) return prev;
+                        return [{ ...newSession, notes_count: 0, last_message_at: newSession.created_at } as unknown as Chat, ...prev];
+                    });
+                    loadStats();
+                }
+            },
+            (newMessage) => {
+                setChats(prev => {
+                    const existingChatIndex = prev.findIndex(c => c.id === newMessage.session_id);
+                    if (existingChatIndex === -1) return prev;
+
+                    const updatedChat = {
+                        ...prev[existingChatIndex],
+                        last_activity: newMessage.created_at,
+                        last_message_at: newMessage.created_at,
+                        unread_count: (prev[existingChatIndex].unread_count || 0) + (selectedChat?.id === newMessage.session_id ? 0 : 1)
+                    };
+
+                    const newChats = [...prev];
+                    newChats[existingChatIndex] = updatedChat;
+                    return newChats.sort((a, b) =>
+                        new Date(b.last_message_at || b.created_at).getTime() -
+                        new Date(a.last_message_at || a.created_at).getTime()
+                    );
+                });
+
+                if (selectedChat && newMessage.session_id === selectedChat.id) {
+                    setMessages(prev => {
+                        if (prev.some(m => m.id === newMessage.id)) return prev;
+                        return [...prev, newMessage as unknown as Message];
+                    });
+                }
+            },
+            (updatedSession) => {
+                if (updatedSession.tenant_id === tenantId || updatedSession.tenant_id === undefined) {
+                    setChats(prev => {
+                        const newChats = prev.map(chat =>
+                            chat.id === updatedSession.id
+                                ? { ...chat, ...updatedSession, last_message_at: updatedSession.last_activity || chat.last_message_at }
+                                : chat
+                        );
+                        return newChats.sort((a, b) =>
+                            new Date(b.last_message_at || b.created_at).getTime() -
+                            new Date(a.last_message_at || a.created_at).getTime()
+                        );
+                    });
+                    loadStats();
+                }
+            }
+        );
+
+        return () => {
+            globalChatService.unsubscribe('all_sessions');
+        };
+    }, [agentInfo, selectedChat?.id]);
+
+    useEffect(() => {
+        if (!selectedChat) return;
+
+        const typingSubscription = globalChatService.subscribeToTypingPreview(
+            selectedChat.id,
+            (content) => {
+                setTypingPreview(content);
+                if ((window as any).typingAgentTimeout) clearTimeout((window as any).typingAgentTimeout);
+                (window as any).typingAgentTimeout = setTimeout(() => setTypingPreview(null), 3000);
+            }
+        );
+
+        return () => {
+            globalChatService.unsubscribe(`session:${selectedChat.id}`);
+            setTypingPreview(null);
+        };
+    }, [selectedChat?.id]);
 
     if (!agentInfo) {
         return (
@@ -516,9 +521,19 @@ export const AgentDashboard: React.FC = () => {
                                     <Zap className="w-4 h-4 text-blue-400" />
                                     Active Inbox
                                 </h2>
-                                <span className="px-2 py-0.5 bg-blue-500/10 text-blue-400 text-[10px] font-bold uppercase tracking-wider rounded-full">
-                                    {chats.length} Priority
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={loadChats}
+                                        disabled={isLoadingChats}
+                                        className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all disabled:opacity-50"
+                                        title="Refresh Inbox"
+                                    >
+                                        <TrendingUp className={`w-4 h-4 ${isLoadingChats ? 'animate-spin' : ''}`} />
+                                    </button>
+                                    <span className="px-3 py-1 bg-blue-500/10 text-blue-400 rounded-full text-[10px] font-bold tracking-wider uppercase">
+                                        {chats.length} Priority
+                                    </span>
+                                </div>
                             </div>
 
                             <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
